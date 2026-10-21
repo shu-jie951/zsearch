@@ -1,0 +1,969 @@
+/* ==========================================================================
+   ZSEARCH · 工作台（收藏 / 历史 / 探活 / 导出 / 运行状态）
+   --------------------------------------------------------------------------
+   设计约束（与 wallpaper.css 保持一致，别另起一套）
+     · 只消费 base.css / wallpaper.css 已有变量，不写死颜色；
+       唯一的实色是 --accent（品牌橙），只用于「已收藏」「进行中」这类
+       极少面积的状态标记。
+     · 抽屉必须挂在 <body> 直接子级：祖先若带 backdrop-filter / transform，
+       后代的 position:fixed 会被困在那一层（本项目已踩过两次）。
+     · 长列表（60+ 条结果）绝不用 backdrop-filter —— 每帧重算背景模糊会
+       把滚动拖到 20fps 以下。抽屉里条目少，可以用。
+
+   层叠顺序（关键，比的就是这个）
+     .results-header     z 1000  结果页顶栏（results.css 里定的，带不透明搜索框和按钮）
+     .wb-scrim           z 1090
+     .wb-panel           z 1100
+     .wb-toast           z 1150
+
+   ⚠️ 为什么必须高过 1000
+     抽屉是 <body> 直接子级，按理说"后来者居上"就够了。但 .results-header
+     显式写了 z-index:1000 —— 它自己造了一层，于是任何 z-index < 1000 的
+     兄弟节点（包括本抽屉、包括原来的 .wall-drawer 的 900）都会被压在它下面。
+     症状很怪：抽屉滑出来了，可顶部那一条（标题"工作台" + 关闭按钮）被顶栏
+     的搜索框和按钮盖住，看起来像"抽屉头部没渲染"。
+     同理 wallpaper.css 里的 890/900 也一并抬到了 1040/1050。
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   一、顶栏触发按钮
+   -------------------------------------------------------------------------- */
+
+.wb-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.wb-trigger:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+
+.wb-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wb-trigger.is-open {
+  color: var(--text-strong);
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+
+/* 角标：收藏条数。为 0 时不渲染（不制造空装饰） */
+.wb-badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 15px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   二、抽屉骨架
+   -------------------------------------------------------------------------- */
+
+.wb-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1090;
+  background: rgba(6, 7, 10, 0.34);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.32s ease;
+}
+
+.wb-scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.wb-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1100;
+  width: min(94vw, 424px);
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(30px) saturate(170%);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  border-left: 1px solid var(--border);
+  box-shadow: -18px 0 48px -18px rgba(0, 0, 0, 0.42);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition:
+    transform 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0.42s;
+}
+
+.wb-panel.is-open {
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.wb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 18px 18px 0;
+  flex-shrink: 0;
+}
+
+.wb-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-strong);
+}
+
+.wb-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.wb-close:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.wb-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 14px 18px 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.wb-tab {
+  position: relative;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0 2px 10px;
+  margin-right: 18px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.wb-tab:hover {
+  color: var(--text-muted);
+}
+
+.wb-tab.active {
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+.wb-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1.5px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.wb-tab .wb-tab-n {
+  margin-left: 5px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 18px 24px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.wb-body::-webkit-scrollbar {
+  display: block;
+  width: 4px;
+}
+
+.wb-body::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--border-strong);
+}
+
+/* --------------------------------------------------------------------------
+   三、抽屉内的通用行（收藏条目 / 历史条目共用）
+   -------------------------------------------------------------------------- */
+
+/* 抽屉是 92% 白（或 90% 黑）的实表面，全局 --text-faint (#8a8a95) 落在
+   亮色表面上的对比度只有 ~3.4:1，10.5px 的小字要眯着眼看。
+   所以面板内的小字统一深一档，改用 --text-muted。 */
+.wb-panel .wb-metric-k,
+.wb-panel .wb-label,
+.wb-panel .wb-label-btn,
+.wb-panel .wb-row-meta,
+.wb-panel .wb-src-meta,
+.wb-panel .wb-src-head .state,
+.wb-panel .wb-empty-desc,
+.wb-panel .wb-tab {
+  color: var(--text-muted);
+}
+
+.wb-panel .wb-tab.active {
+  color: var(--text-strong);
+}
+
+.wb-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.wb-row:last-child {
+  border-bottom: 0;
+}
+
+.wb-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-row-title {
+  display: block;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--text);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+  transition: color 0.15s ease;
+}
+
+a.wb-row-title:hover {
+  color: var(--accent);
+}
+
+.wb-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.wb-row:hover .wb-row-actions,
+.wb-row:focus-within .wb-row-actions {
+  opacity: 1;
+}
+
+.wb-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.wb-icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.wb-icon-btn.danger:hover {
+  color: #e11d48;
+  background: rgba(225, 29, 72, 0.08);
+}
+
+/* 空状态：不画大插画，一句话 + 一句引导即可 */
+.wb-empty {
+  padding: 44px 8px;
+  text-align: center;
+}
+
+.wb-empty-title {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.wb-empty-desc {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-faint);
+}
+
+/* 分组小标题 */
+.wb-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 20px 0 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+.wb-label:first-child {
+  margin-top: 12px;
+}
+
+.wb-label-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.wb-label-btn:hover {
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   四、结果页工具条（探活 / 导出）
+   紧跟在统计行之下，只在有结果时出现。
+   -------------------------------------------------------------------------- */
+
+.wb-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: -6px 0 14px;
+  animation: reveal-up 0.4s var(--ease-out);
+}
+
+.wb-tools[hidden] {
+  display: none;
+}
+
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 27px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tool-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.tool-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.tool-btn.busy {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: var(--accent-soft);
+  opacity: 1;
+}
+
+.tool-btn svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+/* 探活进度：一条极细轨道 + 计数，占满剩余宽度 */
+.probe-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 130px;
+  max-width: 260px;
+}
+
+.probe-meter[hidden] {
+  display: none;
+}
+
+.probe-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.probe-track {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.probe-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.28s var(--ease-out);
+}
+
+/* 探活结果分布条：有效 / 失效 / 未知，三段堆叠 */
+.probe-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 150px;
+}
+
+.probe-summary[hidden] {
+  display: none;
+}
+
+.probe-stack {
+  display: flex;
+  width: 92px;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.probe-stack > i {
+  display: block;
+  height: 100%;
+  transition: width 0.32s var(--ease-out);
+}
+
+.probe-stack > i.s-valid {
+  background: #16a34a;
+}
+
+.probe-stack > i.s-invalid {
+  background: #dc2626;
+}
+
+.probe-stack > i.s-unknown {
+  background: color-mix(in srgb, var(--text-faint) 45%, transparent);
+}
+
+.probe-legend {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+}
+
+.probe-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.probe-legend i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: block;
+}
+
+.probe-legend i.s-valid {
+  background: #16a34a;
+}
+
+.probe-legend i.s-invalid {
+  background: #dc2626;
+}
+
+.probe-legend i.s-unknown {
+  background: var(--text-faint);
+}
+
+/* --------------------------------------------------------------------------
+   五、结果条目上的探活状态点 + 收藏星标
+   -------------------------------------------------------------------------- */
+
+/* 探活点：插在 snippet 最前面。用 5px 小点，不用徽章，
+   否则 60 条结果每行多一个胶囊框，视觉噪音盖过内容。 */
+.alive-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+  background: var(--border-strong);
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.alive-dot[data-state='pending'] {
+  background: var(--accent);
+  animation: alive-pulse 1.1s ease-in-out infinite;
+}
+
+.alive-dot[data-state='valid'] {
+  background: #16a34a;
+  box-shadow: 0 0 0 2.5px rgba(22, 163, 74, 0.14);
+}
+
+.alive-dot[data-state='invalid'] {
+  background: #dc2626;
+  box-shadow: 0 0 0 2.5px rgba(220, 38, 38, 0.13);
+}
+
+.alive-dot[data-state='unknown'] {
+  background: color-mix(in srgb, var(--text-faint) 55%, transparent);
+}
+
+@keyframes alive-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1.1); }
+}
+
+/* 收藏星标：默认隐形，hover 该条时浮现；已收藏则常显 */
+.fav-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease, color 0.18s ease, background-color 0.18s ease,
+    transform 0.18s var(--ease-spring);
+}
+
+.result-item:hover .fav-btn,
+.fav-btn:focus-visible,
+.fav-btn.is-on {
+  opacity: 1;
+}
+
+.fav-btn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.fav-btn.is-on {
+  color: var(--accent);
+}
+
+.fav-btn.is-on svg {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.fav-btn.pop {
+  transform: scale(1.22);
+}
+
+/* 有星标时给标题让出右侧空间，避免长标题压到星星 */
+.result-item.has-fav .result-title {
+  padding-right: 30px;
+}
+
+/* --------------------------------------------------------------------------
+   六、运行状态看板
+   -------------------------------------------------------------------------- */
+
+.wb-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.wb-metric {
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-elevated) 45%, transparent);
+}
+
+.wb-metric-k {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+.wb-metric-v {
+  margin-top: 3px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-strong);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-metric-v small {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--text-faint);
+  margin-left: 2px;
+}
+
+.wb-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 11.5px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.wb-kv:last-child {
+  border-bottom: 0;
+}
+
+.wb-kv > b {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.wb-kv > span {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* 数据源健康行 */
+.wb-src {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.wb-src:last-child {
+  border-bottom: 0;
+}
+
+.wb-src-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.wb-src-head .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wb-src-head .dot.ok {
+  background: #16a34a;
+}
+
+.wb-src-head .dot.cool {
+  background: #d97706;
+  animation: alive-pulse 1.6s ease-in-out infinite;
+}
+
+/* 有失败记录但还没进冷却的源：黄灯常亮。
+   给灰色会和"已停用/没调用过"混淆，看板上分不清是谁真的在报错。 */
+.wb-src-head .dot.bad {
+  background: #d97706;
+}
+
+.wb-src-head .dot.off {
+  background: var(--text-faint);
+}
+
+.wb-src-head .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-src-head .state {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-src-meta {
+  margin-top: 4px;
+  padding-left: 13px;
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-src-meta em {
+  font-style: normal;
+  color: var(--text-muted);
+}
+
+/* 防护项胶囊 */
+.wb-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.wb-pill.on {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.wb-pill.off {
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+/* --------------------------------------------------------------------------
+   七、首页「最近搜索」
+   -------------------------------------------------------------------------- */
+
+.wb-recent {
+  width: 100%;
+  max-width: 640px;
+  margin: 6px auto 0;
+  animation: reveal-up 0.5s var(--ease-out) backwards;
+  animation-delay: 0.16s;
+}
+
+.wb-recent[hidden] {
+  display: none;
+}
+
+.wb-recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+.wb-recent-clear {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.wb-recent-clear:hover {
+  color: var(--accent);
+}
+
+.wb-recent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wb-recent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 200px;
+  height: 27px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg-elevated) 40%, transparent);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.wb-recent-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-recent-chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+/* --------------------------------------------------------------------------
+   八、轻提示（导出成功 / 收藏成功）
+   -------------------------------------------------------------------------- */
+
+.wb-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 34px;
+  z-index: 1150;
+  transform: translate(-50%, 12px);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 80vw;
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: var(--shadow-md);
+  color: var(--text);
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.26s ease, transform 0.32s var(--ease-out);
+}
+
+.wb-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* --------------------------------------------------------------------------
+   九、窄屏
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 800px) {
+  .wb-panel {
+    width: 100vw;
+    border-left: 0;
+  }
+
+  /* 触摸屏没有 hover，星标必须常显，否则永远点不到 */
+  .fav-btn {
+    opacity: 1;
+  }
+
+  .wb-tools {
+    margin-top: -2px;
+  }
+
+  .probe-meter {
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alive-dot[data-state='pending'],
+  .wb-src-head .dot.cool {
+    animation: none;
+  }
+
+  .wb-panel,
+  .wb-scrim {
+    transition-duration: 0.01ms;
+  }
+}

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 96" width="470" height="96"
+     role="img" aria-label="ZSEARCH 瞬时搜">
+  <title>ZSEARCH 瞬时搜</title>
+
+  <!-- Horizontal lockup: mark + wordmark + Chinese tagline.
+       The mark mirrors public/static/logo.svg exactly (see it for the Z's
+       geometry and why the tile is the site's own paper colour rather than a
+       dark chip): paper #FBFAF9 + 18% ink hairline, ink Z, one orange dot on
+       the slash midpoint. Same object as the desktop icon -- no second design. -->
+  <defs>
+    <linearGradient id="lg-text" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26262B"/>
+      <stop offset="1" stop-color="#0D0D10"/>
+    </linearGradient>
+    <linearGradient id="lg-rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#18181B" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#18181B" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- The 128-unit mark of logo.svg, scaled to 76 and nudged up 2 units so its
+       optical centre lines up with the wordmark's. -->
+  <g transform="translate(0,-2) scale(0.59375)">
+    <rect x="6" y="6" width="116" height="116" rx="28" fill="#FBFAF9"/>
+    <rect x="6.9" y="6.9" width="114.2" height="114.2" rx="27.2" fill="none"
+          stroke="#16161A" stroke-opacity="0.18" stroke-width="1.8"/>
+    <g transform="translate(21,21) scale(0.86)">
+      <path d="M 0,0 L 100,0 L 100,20 L 31,80 L 100,80 L 100,100
+               L 0,100 L 0,80 L 69,20 L 0,20 Z" fill="#16161A"/>
+      <circle cx="50" cy="50" r="8" fill="#E16C28"/>
+    </g>
+  </g>
+
+  <text x="90" y="49" fill="url(#lg-text)"
+        font-family="Georgia, 'Times New Roman', 'YuMin-Medium', YuMincho, 'Songti SC', SimSun, serif"
+        font-size="40" font-weight="700" letter-spacing="1.5">ZSEARCH</text>
+
+  <rect x="300" y="20" width="1" height="36" fill="url(#lg-rule)"/>
+
+  <text x="320" y="44" fill="#3F3F46" fill-opacity="0.72"
+        font-family="'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', SimSun, serif"
+        font-size="23" font-weight="500" letter-spacing="3">瞬时搜</text>
+</svg>

@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="robots" content="index,follow">
+  <meta name="description" content="ZSEARCH 是专业的网盘搜索引擎，聚合夸克、百度、UC、迅雷等主流网盘资源，支持考研、影视、音乐、电子书、软件、文档等全品类检索。">
+  <meta name="keywords" content="ZSEARCH,瞬时搜,网盘搜索,夸克网盘搜索,百度网盘搜索,迅雷网盘搜索,UC网盘搜索">
+  <meta property="og:title" content="ZSEARCH - 好用的网盘资源搜索引擎">
+  <meta property="og:description" content="全网网盘资源一站搜索，工作、学习、娱乐的万能搜索神器。">
+  <meta property="og:url" content="/">
+  <meta name="theme-color" content="#fbfaf9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e0e11" media="(prefers-color-scheme: dark)">
+  <title>ZSEARCH - 网盘资源搜索引擎</title>
+  <link rel="canonical" href="/">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=f80ad4af">
+  <link rel="stylesheet" href="/static/css/base.css?v=7dbc642b">
+  <link rel="stylesheet" href="/static/css/home.css?v=29fa667f">
+  <link rel="stylesheet" href="/static/css/wallpaper.css?v=45d6cc9f">
+  <link rel="stylesheet" href="/static/css/workbench.css?v=f47c9f9e">
+</head>
+
+<body class="home-body">
+
+  <!-- 氛围层：纯 CSS/SVG 绘制，无外部图片 -->
+  <div class="atmosphere" aria-hidden="true">
+    <div class="aura aura-1"></div>
+    <div class="aura aura-2"></div>
+    <div class="aura aura-3"></div>
+    <div class="grid"></div>
+    <div class="grain"></div>
+    <div class="vignette"></div>
+  </div>
+
+  <header class="home-header">
+    <a href="/" class="home-header-brand" aria-label="ZSEARCH 首页">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+        <circle cx="11" cy="11" r="7.2" stroke="currentColor" stroke-width="1.7"/>
+        <path d="M16.4 16.4 21 21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+      <span>ZSEARCH</span>
+    </a>
+
+    <div class="home-header-right">
+      <button type="button" id="cmdHintBtn" class="kbd-hint" title="打开快捷面板（Ctrl/⌘ + K）">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <span class="kbd-hint-text">快捷面板</span>
+        <kbd class="kbd">Ctrl</kbd><kbd class="kbd">K</kbd>
+      </button>
+
+      <div class="status-pill" id="statusPill" title="数据来源状态">
+        <span class="dot"></span>
+        <span id="statusText">连接中…</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="home-main">
+    <form id="searchForm" action="/search" method="GET" class="home-form">
+
+      <div class="home-logo-block reveal" style="--i:0">
+        <a href="/" class="brand-mark" title="ZSEARCH - 网盘资源搜索引擎">
+          <!-- Brand lockup: the tile carries its own colours so it reads the
+               same on both themes, while the wordmark stays currentColor so it
+               keeps inheriting the page text colour exactly like the old
+               text-only mark did.
+               Direction 2 ("quiet paper"): the tile is the site's own paper
+               #FBFAF9 with an 18% ink hairline, the Z is ink, and a single
+               orange dot sits at the centre of the slash. Identical geometry
+               and colours to public/static/logo.svg, so the page mark and the
+               desktop icon are literally the same object. On the light theme
+               the paper tile melts into --bg on purpose -- the hairline is all
+               that defines it, which is the point. -->
+          <!-- viewBox width is set from the wordmark's measured advance:
+               x=80 start + 286.97 for "ZSEARCH" at font-size 82 = 366.97, plus
+               a few units of slack. Anything narrower clips the H's right stem,
+               because the outermost <svg> clips to its viewport by default. -->
+          <svg viewBox="0 0 374 88" version="1.1" xmlns="http://www.w3.org/2000/svg" role="img"
+               aria-label="ZSEARCH">
+            <!-- Tile, authored at 128 units then scaled to 60 so it lines up
+                 with the wordmark's cap height. -->
+            <g transform="translate(0,14) scale(0.46875)">
+              <rect x="6" y="6" width="116" height="116" rx="28" fill="#FBFAF9"/>
+              <rect x="6.9" y="6.9" width="114.2" height="114.2" rx="27.2" fill="none"
+                    stroke="#16161A" stroke-opacity="0.18" stroke-width="1.8"/>
+              <!-- Equal-weight Z: bars 20 thick, diagonal 31 horizontal
+                   (31 x sin41deg ~= 20). The dot lands on the slash midpoint
+                   (50,50). See logo.svg for the full reasoning. -->
+              <g transform="translate(21,21) scale(0.86)">
+                <path d="M 0,0 L 100,0 L 100,20 L 31,80 L 100,80 L 100,100
+                         L 0,100 L 0,80 L 69,20 L 0,20 Z" fill="#16161A"/>
+                <circle cx="50" cy="50" r="8" fill="#E16C28"/>
+              </g>
+            </g>
+            <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"
+               font-family="YuMin-Medium, YuMincho, 'Songti SC', 'SimSun', serif" font-size="82" font-weight="400">
+              <text fill="currentColor">
+                <tspan x="80" y="72">ZSEARCH</tspan>
+              </text>
+            </g>
+          </svg>
+          <span class="brand-shine" aria-hidden="true"></span>
+        </a>
+        <div class="home-logo-sub">
+          <span class="sub-line"></span>
+          <span>聚合夸克 · 百度 · UC · 迅雷 网盘资源</span>
+          <span class="sub-line"></span>
+        </div>
+      </div>
+
+      <div class="w-full-relative reveal" style="--i:1;width:100%;position:relative;">
+        <div class="chat-editor-content" id="editorContent">
+          <!-- 光标跟随柔光：只吃 pointer 坐标写进 CSS 变量，不参与命中测试 -->
+          <span class="editor-aura" aria-hidden="true"></span>
+          <div class="chat-input">
+            <div class="chat-input-wrapper">
+              <div id="ghostOverlay" class="chat-input-ghost" aria-hidden="true"></div>
+              <textarea
+                name="q"
+                id="searchInput"
+                class="chat-input-editor"
+                rows="1"
+                placeholder="描述你想找的资源，一句话即可…"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="搜索关键词"></textarea>
+            </div>
+
+            <div class="chat-editor-action">
+              <div class="left-area">
+                <button type="button" id="brainBtn" class="suggest-btn-container" aria-label="联想" title="开启/关闭搜索联想">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M14.8974 2.29998C15.8303 2.29013 16.802 2.58194 17.5566 3.22577C18.1589 3.73967 18.5845 4.44761 18.7451 5.31073C20.0159 5.68745 21.0027 6.50113 21.4482 7.6037C21.8952 8.70995 21.7263 9.93091 20.9902 10.9914C21.5775 11.9456 21.7666 13.1257 21.6757 14.2189C21.6886 14.283 21.6962 14.3493 21.6962 14.4172C21.6961 16.0908 20.757 17.5402 19.3808 18.2785C18.7896 20.2128 17.1855 21.4914 15.4599 21.6769C14.5141 21.7787 13.5339 21.5479 12.7128 20.9133C12.4502 20.7102 12.2116 20.4715 11.999 20.1994C11.7854 20.4727 11.5463 20.7126 11.2822 20.9162C10.4592 21.5506 9.47721 21.78 8.53022 21.676C6.80047 21.4857 5.19378 20.1976 4.6103 18.2521C3.32727 17.5234 2.6154 16.0905 2.38764 14.7404C2.18065 13.5132 2.32674 12.0996 3.00873 10.9914C2.2728 9.93104 2.10389 8.7098 2.55073 7.6037C2.99615 6.50129 3.98328 5.68752 5.25385 5.31073C5.41438 4.44772 5.84013 3.73967 6.44233 3.22577C7.19688 2.58201 8.16873 2.2902 9.10151 2.29998C10.0348 2.30984 11.0025 2.62141 11.7509 3.2785C11.8376 3.35461 11.9199 3.43566 11.999 3.51971C12.0783 3.43538 12.162 3.35484 12.249 3.2785C12.9972 2.62161 13.9643 2.3099 14.8974 2.29998ZM10.9999 6.17108C10.9998 5.5022 10.7533 5.06474 10.4306 4.78143C10.0884 4.48116 9.60157 4.30555 9.081 4.29998C8.55965 4.29448 8.07721 4.46058 7.74116 4.74725C7.42624 5.01593 7.18256 5.43636 7.18256 6.09393V6.12225C7.18544 6.6218 6.81963 7.04734 6.32514 7.11834C5.22327 7.27654 4.61609 7.83085 4.40522 8.35272C4.26751 8.69354 4.25234 9.13509 4.5058 9.61639C5.13533 9.26679 5.86003 9.06662 6.6308 9.06659C7.18307 9.06659 7.63077 9.51433 7.6308 10.0666C7.6308 10.6189 7.18309 11.0666 6.6308 11.0666C5.98117 11.0666 5.39367 11.3251 4.96284 11.7473C4.92842 11.781 4.89119 11.8103 4.85346 11.8381C4.39663 12.4129 4.18564 13.3773 4.35932 14.4074C4.55066 15.5418 5.13668 16.3609 5.82123 16.6213C6.14352 16.7438 6.38036 17.0242 6.44233 17.3625C6.7245 18.7647 7.77678 19.5806 8.74799 19.6877C9.2239 19.74 9.68087 19.6256 10.0615 19.3322C10.4299 19.0481 10.794 18.5409 10.9999 17.6187V6.17108ZM12.9999 17.6221C13.2063 18.5438 13.5702 19.0494 13.9379 19.3329C14.3186 19.6263 14.7755 19.7407 15.2515 19.6884C16.2227 19.5813 17.275 18.7654 17.5572 17.3632C17.6191 17.0249 17.856 16.7445 18.1783 16.622C18.8628 16.3616 19.4488 15.5425 19.6402 14.4081C19.8138 13.378 19.6029 12.4136 19.146 11.8388C19.1082 11.811 19.0711 11.7817 19.0367 11.748C18.6058 11.3258 18.0184 11.0673 17.3688 11.0673C16.8165 11.0673 16.3688 10.6196 16.3688 10.0673C16.3688 9.51503 16.8165 9.0673 17.3688 9.0673C18.1396 9.0673 18.8643 9.26747 19.4938 9.61707C19.7472 9.13577 19.732 8.69422 19.5943 8.3534C19.3834 7.83153 18.7763 7.27722 17.6744 7.11902C17.1799 7.04802 16.8141 6.62248 16.817 6.12293V6.09461C16.817 5.43704 16.5733 5.01661 16.2584 4.74793C15.9223 4.46126 15.4399 4.29516 14.9185 4.30066C14.398 4.30623 13.9111 4.48184 13.569 4.78211C13.2462 5.06542 12.9998 5.50288 12.9998 6.17176V17.6221Z"/>
+                  </svg>
+                  <span>联想</span>
+                </button>
+
+                <button type="button" id="cmdBtn" class="icon-button" aria-label="快捷面板" title="快捷面板（Ctrl/⌘ + K）">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+                    <path d="M3 9h18"></path>
+                    <path d="M9 9v11"></path>
+                  </svg>
+                  <span>面板</span>
+                </button>
+
+                <!-- 意图识别：输入时实时判断类别，给出"往哪个方向找"的提示 -->
+                <span class="editor-intent" id="editorIntent" hidden aria-live="polite">
+                  <span class="editor-intent__dot" aria-hidden="true"></span>
+                  <span class="editor-intent__text"></span>
+                </span>
+              </div>
+
+              <div class="right-area">
+                <button type="button" id="clearBtn" class="editor-clear" aria-label="清空输入" title="清空（Esc）" hidden>
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                       stroke-width="2.1" stroke-linecap="round" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18"></path>
+                  </svg>
+                </button>
+
+                <button type="button" id="voiceBtn" class="voice-btn-container" aria-label="语音输入" title="按住或点击开始语音输入">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" x2="12" y1="19" y2="22"></line>
+                  </svg>
+                </button>
+
+                <button type="submit" id="searchSubmitBtn" class="send-button-container" aria-label="开始搜索" title="开始搜索">
+                  <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+                    <path d="M8.3125 0.980183C8.66767 1.0531 8.97902 1.20418 9.2627 1.43233C9.48724 1.61297 9.73029 1.85793 9.97949 2.10714L14.707 6.83468L13.293 8.24874L9 3.95577V15.0417H7V3.95577L2.70703 8.24874L1.29297 6.83468L6.02051 2.10714C6.26971 1.85793 6.51277 1.61297 6.7373 1.43233C6.97662 1.23986 7.28445 1.04402 7.6875 0.980183C7.8973 0.947006 8.1031 0.95516 8.3125 0.980183Z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="suggestDropdown" class="suggest-dropdown-menu hidden" role="listbox" aria-label="搜索联想"></div>
+      </div>
+    </form>
+
+    <div class="home-plugins-scroll-wrapper reveal" id="homePluginsWrapper" style="--i:2">
+      <button type="button" id="pluginScrollLeftBtn"
+              class="plugin-scroll-arrow left" aria-label="向左滑动" title="向左滑动">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+
+      <div class="home-plugins-track" id="homePluginsTrack">
+        <div class="publisher-shortcut__line">
+          <a href="/search?q=%E6%AF%8F%E6%97%A5%E7%B2%BE%E9%80%89" class="publisher-shortcut__link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                 stroke-linejoin="round" class="linear-icon-button__icon"><path d="M6 18h8"/><path d="M3 22h18"/><path d="m14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/></svg>
+            <span>每日精选</span>
+          </a>
+        </div>
+
+        <div class="publisher-shortcut__line">
+          <a href="/search?q=%E7%83%AD%E9%97%A8%E9%9F%B3%E4%B9%90" class="publisher-shortcut__link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                 stroke-linejoin="round" class="linear-icon-button__icon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span>热门音乐</span>
+          </a>
+        </div>
+
+        <div class="publisher-shortcut__line">
+          <a href="/search?q=%E7%A6%8F%E5%88%A9" class="publisher-shortcut__link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                 stroke-linejoin="round" class="linear-icon-button__icon"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg>
+            <span>福利社</span>
+          </a>
+        </div>
+
+        <div class="publisher-shortcut__line">
+          <a href="/search?q=%E6%B5%B7%E5%A4%96%E7%83%AD%E6%A6%9C" class="publisher-shortcut__link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                 stroke-linejoin="round" class="linear-icon-button__icon"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>
+            <span>海外热榜</span>
+          </a>
+        </div>
+
+        <div class="publisher-shortcut__line">
+          <a href="/search?q=%E5%AE%9E%E7%94%A8%E5%B7%A5%E5%85%B7" class="publisher-shortcut__link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                 stroke-linejoin="round" class="linear-icon-button__icon"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span>实用工具</span>
+          </a>
+        </div>
+
+        <div class="publisher-shortcut__line">
+          <a href="/search?q=%E8%80%83%E7%A0%94" class="publisher-shortcut__link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                 stroke-linejoin="round" class="linear-icon-button__icon"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+            <span>考研专区</span>
+          </a>
+        </div>
+      </div>
+
+      <button type="button" id="pluginScrollRightBtn"
+              class="plugin-scroll-arrow right" aria-label="向右滑动" title="向右滑动">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+    </div>
+
+    <!-- 今日探索：静态推荐位，点击即搜索 -->
+    <section class="home-explore reveal" id="homeExplore" style="--i:3" aria-label="热门探索">
+      <div class="explore-head">
+        <span class="explore-title">今日探索</span>
+        <span class="explore-hint">点击直接搜索</span>
+      </div>
+      <div class="explore-chips" id="exploreChips"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-row">
+      <span>© <span id="current-year"></span> ZSEARCH</span>
+      <span class="dot-sep">•</span>
+      <a href="/disclaimer">免责声明与使用条款</a>
+      <span class="dot-sep">•</span>
+      <a href="/api/status" target="_blank" rel="noopener">运行状态</a>
+    </div>
+  </footer>
+
+  <!-- 快捷面板（Ctrl/⌘ + K）：搜索历史 + 快捷入口 -->
+  <div class="cmdk-overlay hidden" id="cmdkOverlay" role="dialog" aria-modal="true" aria-label="快捷面板">
+    <div class="cmdk-panel" id="cmdkPanel">
+      <div class="cmdk-head">
+        <span class="cmdk-title">快捷面板</span>
+        <button type="button" class="cmdk-close" id="cmdkClose" aria-label="关闭">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="cmdk-body" id="cmdkBody"></div>
+      <div class="cmdk-foot">
+        <span><kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> 选择</span>
+        <span><kbd class="kbd">Enter</kbd> 确认</span>
+        <span><kbd class="kbd">Esc</kbd> 关闭</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/home.js?v=7c0ac4b0"></script>
+  <script src="/static/js/wallpaper.js?v=cf8cab38"></script>
+  <script src="/static/js/workbench.js?v=b06a071e"></script>
+</body>
+
+</html>

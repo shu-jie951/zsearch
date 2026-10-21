@@ -1,0 +1,20 @@
+# 统一换行，避免 Windows 提交把 Dockerfile / 脚本写成 CRLF 后在容器里跑不起来
+* text=auto
+
+# 容器与 shell 必须 LF
+Dockerfile text eol=lf
+*.sh text eol=lf
+.dockerignore text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Windows 批处理必须 CRLF（cmd.exe 对 LF 的兼容并不完整）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制：别做任何换行转换，也别尝试 diff
+*.png binary
+*.ico binary
+*.webp binary
+*.jpg binary
+*.woff2 binary

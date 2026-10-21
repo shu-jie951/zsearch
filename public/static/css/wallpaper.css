@@ -1,0 +1,965 @@
+/* ==========================================================================
+   ZSEARCH · 壁纸与玻璃层
+   --------------------------------------------------------------------------
+   设计意图
+     壁纸不是「贴一张图当背景」，而是换掉整页的光照条件。10 张图明度横跨
+     近白到近黑，同一套文字颜色必然在某一半图上失效。所以每张壁纸带一个
+     tone（light / dark），切图时同帧把整套 --bg/--text/--border/--shadow
+     换成对应的一套，再叠一层按 tone 定制的遮罩。
+     品牌橙 --accent 刻意不跟随壁纸 —— 它是识别资产，跟着图变就散了。
+
+   层叠顺序（关键，别动）
+     body 背景                最底
+     .wall-stage   z-index:-2 壁纸 + 遮罩
+     .atmosphere   z-index:-1 极光/网格/噪点（base.css 里）
+     内容          z-index 0+ 卡片、文字
+     .wall-dock    z-index:400 切换胶囊
+     .wall-drawer  z-index:1050 抽屉（必须挂 body 直接子级）
+                              —— 必须 > 1000，结果页 .results-header 是 1000
+
+   ⚠️ 已知陷阱（同 transform 困住 fixed 的同类病）
+     backdrop-filter 会创建包含块，把后代 position:fixed 困在这一层。
+     所以：玻璃规则只作用在「内容卡片」上，绝不允许作用在含有 fixed 浮层
+     的布局容器上。抽屉/弹窗一律挂在 <body> 直接子级。
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   一、tone 变量
+   与系统深浅色是两个正交维度：系统暗色 + 用户选了亮壁纸时，以壁纸为准。
+   -------------------------------------------------------------------------- */
+
+/* 壁纸渲染参数（每张图可单独调，由 wallpaper.js 用内联 style 写到 <html> 上）。
+   在这里给一份 CSS 侧默认值，好处有两个：
+     1. 读 CSS 就能知道这些值大概长什么样，不必跑去翻 JS；
+     2. 静态审查（_qa_ui_static.js）要求"用到的变量必须有定义"，靠 fallback
+        不算 —— 有默认值之后这些 var() 才算真正自洽。
+   注意：内联 style 优先级高于样式表，所以 runtime 覆盖不受影响。 */
+:root {
+  /* filter 整条由 JS 拼好再写进来，CSS 只负责消费。
+     这样"模糊为 0 时不要 blur() 这一环"这件事只需要在一个地方判断。 */
+  --wp-filter: saturate(0.9) brightness(1.03);
+  --wp-scale: 1;
+  --wp-dur: 880ms;
+  --wp-scrim-op: 1;
+}
+
+html[data-wall-tone="light"] {
+  --bg: #fbfaf9;
+  --bg-elevated: #ffffff;
+  --text: #0f1115;
+  --text-strong: #18181b;
+  --text-muted: #5b5b66;
+  --text-faint: #8a8a95;
+  --border: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.14);
+  --surface-hover: rgba(0, 0, 0, 0.05);
+  --surface-soft: #f4f4f5;
+
+  --shadow-sm:
+    0 1px 2px 0 rgba(15, 17, 21, 0.04),
+    0 2px 8px 0 rgba(15, 17, 21, 0.035);
+  --shadow-md:
+    0 1px 2px -1px rgba(15, 17, 21, 0.07),
+    0 4px 12px -2px rgba(15, 17, 21, 0.06),
+    0 12px 32px -8px rgba(15, 17, 21, 0.07);
+  --shadow-lg:
+    0 1px 2px -1px rgba(15, 17, 21, 0.08),
+    0 8px 24px -4px rgba(15, 17, 21, 0.08),
+    0 28px 64px -16px rgba(15, 17, 21, 0.12);
+
+  --aura-1: rgba(255, 168, 112, 0.1);
+  --aura-2: rgba(146, 178, 255, 0.08);
+  --aura-3: rgba(196, 168, 255, 0.06);
+  --grain-opacity: 0.022;
+
+  /* 亮壁纸：只轻微提亮压住杂色，保色相 */
+  --wp-scrim: rgba(253, 252, 251, 0.16);
+  --wp-veil: linear-gradient(180deg,
+      rgba(255, 255, 255, 0.34) 0%,
+      rgba(255, 255, 255, 0) 26%,
+      rgba(255, 255, 255, 0) 74%,
+      rgba(255, 255, 255, 0.4) 100%);
+}
+
+html[data-wall-tone="dark"] {
+  --bg: #0e0e11;
+  --bg-elevated: #1a1a1e;
+  --text: #f4f4f5;
+  --text-strong: #ffffff;
+  --text-muted: #adadb8;
+  --text-faint: #7d7d88;
+  --border: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --surface-soft: #27272a;
+
+  --shadow-sm:
+    0 1px 2px 0 rgba(0, 0, 0, 0.42),
+    0 2px 8px 0 rgba(0, 0, 0, 0.28);
+  --shadow-md:
+    0 1px 2px -1px rgba(0, 0, 0, 0.5),
+    0 4px 14px -2px rgba(0, 0, 0, 0.36),
+    0 14px 36px -10px rgba(0, 0, 0, 0.44);
+  --shadow-lg:
+    0 1px 2px -1px rgba(0, 0, 0, 0.55),
+    0 10px 28px -6px rgba(0, 0, 0, 0.44),
+    0 32px 72px -18px rgba(0, 0, 0, 0.56);
+
+  --aura-1: rgba(255, 152, 92, 0.12);
+  --aura-2: rgba(108, 142, 235, 0.1);
+  --aura-3: rgba(160, 132, 235, 0.08);
+  --grain-opacity: 0.038;
+
+  /* 暗壁纸：必须压下去，否则白字读不动 */
+  --wp-scrim: rgba(6, 7, 10, 0.42);
+  --wp-veil: linear-gradient(180deg,
+      rgba(4, 5, 8, 0.52) 0%,
+      rgba(4, 5, 8, 0.06) 24%,
+      rgba(4, 5, 8, 0.1) 68%,
+      rgba(4, 5, 8, 0.58) 100%);
+}
+
+/* 全局过渡：变量本身不可过渡，但它落到 background-color 上之后可以。
+   切壁纸时底层色调「呼吸」过去，而不是硬切。
+
+   ⚠️ 这里刻意【不】过渡 color。
+   color 是可继承属性，挂在 html/body 上过渡等于让整棵树每一帧都重算样式：
+   实测单次切换的重算次数从 65 次（69ms）直接翻倍，而肉眼收益约等于零——
+   壁纸本身有 880ms 的交叉淡入在铺底，文字色硬切完全被它盖住。
+   想让文字也软化，等淡入结束再加过渡没有意义，所以干脆不做。 */
+html[data-wall-tone],
+body {
+  transition: background-color 0.72s var(--ease-in-out, cubic-bezier(0.65, 0, 0.35, 1));
+}
+
+/* 有壁纸时 body 让出底色，交给 .wall-stage 铺 */
+html[data-wall="on"] body {
+  background-color: transparent;
+}
+
+/* --------------------------------------------------------------------------
+   二、壁纸舞台
+   两层轮换做交叉淡入淡出：改 bg-image 会硬切，所以始终往「当前不可见」
+   的那一层塞新图，等它加载完再翻 opacity。
+   -------------------------------------------------------------------------- */
+
+.wall-stage {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: #0e0e11;
+  contain: strict;
+}
+
+.wall-layer {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0;
+  /* 调色走摄影后期思路，不靠加雾压亮度。
+     饱和度/明度由每张图自己的参数决定（JS 写入变量）：
+     高饱和图（花枝、红叶、卡通）压到 0.5~0.75，暗图再压低明度。
+     一张图一个调子，才不会出现「这张干净、那张刺眼」。 */
+  filter: var(--wp-filter, saturate(0.9));
+  transform: scale(var(--wp-scale, 1));
+  /* 只过渡 opacity。
+     filter / transform 绝不做过渡：这两个值由 tone 决定，跨 tone 切换时若给它们
+     加 transition，就等于让浏览器对一张全屏大图连续 400~500ms 每帧重跑 blur+saturate，
+     而它们作用的那一层此刻正盖在 opacity 0→1 的动画下面，根本看不出来。
+     唯一需要"动"的就是 opacity，所以只留它，合成器才可能走纯 GPU 路径。 */
+  transition: opacity var(--wp-dur, 880ms) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* will-change 只在真的在切的时候挂上。
+   常驻会让两张全屏层永久占着合成器显存（1440×900×4B×2 ≈ 10MB），
+   而且浏览器再也不会回收它们。用完即摘。 */
+.wall-layer.is-fading {
+  will-change: opacity;
+}
+
+.wall-layer.is-on {
+  opacity: 1;
+}
+
+/* 遮罩：颜色由 tone 决定，强度由抽屉滑杆决定（--wp-scrim-op） */
+.wall-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--wp-scrim, rgba(6, 7, 10, 0.4));
+  opacity: var(--wp-scrim-op, 1);
+  transition: background-color 0.72s ease, opacity 0.4s ease;
+}
+
+/* 上下压边：让顶栏和页脚有依托，同时不闷住中间的图。
+   不做过渡：--wp-veil 是一条 linear-gradient，gradient 之间不可插值，
+   写 transition 只会让浏览器走进过渡流程然后瞬间跳变 —— 白付一次重绘。 */
+.wall-veil {
+  position: absolute;
+  inset: 0;
+  background: var(--wp-veil, none);
+}
+
+/* 细噪点：消除大面积渐变/照片上的色带。
+   mix-blend-mode 会把 stage 这一层拉进「需要读底图」的模式，切换期间成本不低，
+   所以切图那 880ms 里先用 .wall-fading 把它摘下来（见文件末尾的运行时降级段）。 */
+.wall-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.14;
+  mix-blend-mode: overlay;
+  transition: opacity 0.2s linear;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
+}
+
+/* 开启壁纸时，原极光层降权，避免和照片打架 */
+html[data-wall="on"] .atmosphere .aura {
+  opacity: 0.55;
+}
+
+/* --------------------------------------------------------------------------
+   三、玻璃皮肤
+   只做「原本没有背景、直接浮在壁纸上会发飘」的几处小件。
+   内容主卡片（.chat-editor-content / 结果卡）在建制时就已是半透明+模糊，
+   靠 tone 变量自动跟随，这里不重复声明。
+   -------------------------------------------------------------------------- */
+
+.wall-glass {
+  background: color-mix(in srgb, var(--bg-elevated) 66%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .wall-glass {
+    background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  }
+}
+
+/* 顶栏的两颗小胶囊 */
+html[data-wall="on"] .status-pill,
+html[data-wall="on"] .kbd-hint {
+  background: color-mix(in srgb, var(--bg-elevated) 62%, transparent);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border-color: var(--border);
+}
+
+/* 热词条与今日探索 */
+html[data-wall="on"] .publisher-shortcut__link {
+  background: color-mix(in srgb, var(--bg-elevated) 58%, transparent);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid var(--border);
+}
+
+html[data-wall="on"] .explore-chip {
+  background: color-mix(in srgb, var(--bg-elevated) 56%, transparent);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid var(--border);
+}
+
+/* 直接压在壁纸上的裸文字：加一层同向光晕。
+   浅色壁纸的暗部（树干、阴影）会把灰字吃掉，这是摄影排版的常规解法，
+   比给整条页脚套玻璃底干净得多。 */
+html[data-wall="on"] .home-logo-sub,
+html[data-wall="on"] .explore-head,
+html[data-wall="on"] .site-footer,
+html[data-wall="on"] .home-header-brand {
+  text-shadow:
+    0 0 14px rgba(255, 255, 255, 0.92),
+    0 1px 2px rgba(255, 255, 255, 0.75);
+}
+
+html[data-wall="on"][data-wall-tone="dark"] .home-logo-sub,
+html[data-wall="on"][data-wall-tone="dark"] .explore-head,
+html[data-wall="on"][data-wall-tone="dark"] .site-footer,
+html[data-wall="on"][data-wall-tone="dark"] .home-header-brand {
+  text-shadow:
+    0 0 16px rgba(0, 0, 0, 0.86),
+    0 1px 3px rgba(0, 0, 0, 0.66);
+}
+
+/* ---- 结果页 ----
+   两条硬约束：
+   1. .result-item 原本是透明的（靠 hover 才出底色），壁纸下长列表会变成
+      「灰字压在图上看不清」，必须给一个稳定底。
+   2. 这里刻意不用 backdrop-filter：一页几十条结果同时做背景采样，
+      中低端机器会直接卡死。半透明实色 78% 已达到同样的视觉融合度。 */
+
+html[data-wall="on"] .result-item {
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+  border-color: var(--border);
+}
+
+/* 亮壁纸要更"实"一些。原因是极端情况不同：
+   暗壁纸 + 浅色字 —— 字本身有天然对比（白字压深底）；
+   亮壁纸 + 深色字 —— 深字压在中间调的彩色照片上，78% 的底透出来的色块
+   会把字"搅浑"，实测在檐外花枝这类高饱和图上尤其糊。
+   所以亮调一路加到 92%，保留一层壁纸气息但不牺牲可读性。 */
+html[data-wall-tone="light"][data-wall="on"] .result-item {
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+}
+
+html[data-wall="on"] .result-item:hover {
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  border-color: var(--border-strong);
+}
+
+html[data-wall="on"] .result-item.keyboard-focus {
+  background: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
+}
+
+/* 顶栏：走实色半透明而不是毛玻璃 —— header 内部若有 fixed 浮层，
+   backdrop-filter 会把它们困住（同 transform 的坑），用实色无此风险。
+   ⚠️ 但光给 .results-header 上色会踩另一个坑：它有 max-width:862px + margin:auto，
+   于是页面正中浮出一个**硬边矩形**，左右两边还露着壁纸。暗壁纸下不明显，
+   一换到亮壁纸（檐外花枝那种）就是一块贴上去的白板。
+   所以颜色画在一条撑满 100vw 的 ::before 上，header 自己保持透明。
+   ::before 没有后代，因此这里用 backdrop-filter 不会困住任何 fixed 元素
+   （只是把壁纸虚化掉，做出真正的"顶栏"质感）。 */
+html[data-wall="on"] .results-header {
+  background: transparent;
+  border-bottom: 0;
+}
+
+html[data-wall="on"] .results-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  z-index: -1;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-bottom: 1px solid var(--border);
+}
+
+/* 亮壁纸下顶栏再压实一点：品牌标是"纸底 + 墨色细描边"的组合标，
+   纸底一旦和背景同色，只剩那条 18% 的细线在撑形，配上 82% 的浅带
+   会整体发灰。92% 之后纸底重新浮出来，描边也有东西可依。 */
+html[data-wall-tone="light"][data-wall="on"] .results-header::before {
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+}
+
+/* 搜索框：壁纸下需要更强的「浮起感」，否则白色玻璃在浅色照片上边界会消失 */
+html[data-wall="on"] .chat-editor-content,
+html[data-wall="on"] .results-ai-composer {
+  border-color: color-mix(in srgb, var(--text) 16%, transparent);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 统计行 / 工具条 / 中间态提示：这几块**不在顶栏里**，是直接压在壁纸上的纯文字。
+   灰字压在彩色照片上会糊成一团，但又不能给它们加底色块（页面上再多几个白框
+   就碎了）。按 tone 走反向光晕 —— 亮壁纸用白晕、暗壁纸用黑晕，既不掉对比度
+   也不增加任何实体色块。 */
+html[data-wall="on"] .results-stats,
+html[data-wall="on"] .wb-tools,
+html[data-wall="on"] .searching-hint {
+  text-shadow:
+    0 0 12px rgba(255, 255, 255, 0.92),
+    0 1px 2px rgba(255, 255, 255, 0.72);
+}
+
+html[data-wall-tone="dark"][data-wall="on"] .results-stats,
+html[data-wall-tone="dark"][data-wall="on"] .wb-tools,
+html[data-wall-tone="dark"][data-wall="on"] .searching-hint {
+  text-shadow:
+    0 0 14px rgba(0, 0, 0, 0.88),
+    0 1px 3px rgba(0, 0, 0, 0.62);
+}
+
+/* 工具条按钮同理：原来的 55% 底在壁纸上看不出边界，抬到 90% 就是一枚干净的胶囊 */
+html[data-wall="on"] .tool-btn {
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  border-color: var(--border-strong);
+}
+
+html[data-wall="on"] .tool-btn:hover:not(:disabled) {
+  background: var(--bg-elevated);
+}
+
+/* --------------------------------------------------------------------------
+   四、底部切换胶囊
+   -------------------------------------------------------------------------- */
+
+.wall-dock {
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transition: box-shadow 0.3s ease, background-color 0.3s ease;
+}
+
+.wall-dock:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+.wall-dock-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease, transform 0.32s var(--ease-spring, cubic-bezier(0.34, 1.4, 0.64, 1));
+}
+
+.wall-dock-handle:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.wall-dock-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wall-dock.is-open .wall-dock-handle {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+/* 展开的缩略图轨道：用 max-width 做推拉，比 display:none 能过渡 */
+.wall-dock-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 0;
+  padding-left: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    max-width 0.44s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.3s ease,
+    padding-left 0.44s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wall-dock.is-open .wall-dock-list {
+  max-width: min(78vw, 720px);
+  padding-left: 6px;
+  opacity: 1;
+}
+
+.wall-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  background-color: var(--surface-soft);
+  background-size: cover;
+  background-position: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  transition: transform 0.26s var(--ease-spring, cubic-bezier(0.34, 1.4, 0.64, 1)), box-shadow 0.26s ease;
+}
+
+.wall-thumb:hover {
+  transform: translateY(-2px) scale(1.04);
+}
+
+.wall-thumb:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wall-thumb[aria-checked="true"] {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+    0 0 0 2px var(--accent),
+    0 4px 14px var(--accent-glow);
+}
+
+/* 选中态的小橙点，色弱也能认出来 */
+.wall-thumb[aria-checked="true"]::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
+}
+
+/* 「纯纸感」：一条斜杠表示"没有图"，比放个灰色块更易读 */
+.wall-thumb.is-plain {
+  background-image: linear-gradient(
+    135deg,
+    transparent 45%,
+    var(--border-strong) 45%,
+    var(--border-strong) 55%,
+    transparent 55%
+  );
+  background-color: var(--surface-soft);
+}
+
+/* --------------------------------------------------------------------------
+   五、右上角抽屉
+   必须挂在 body 直接子级：祖先若有 backdrop-filter，position:fixed 会被
+   困在那一层里（同 transform 的坑）。
+   -------------------------------------------------------------------------- */
+
+.wall-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.wall-trigger:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+
+.wall-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wall-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1040;
+  background: rgba(6, 7, 10, 0.34);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.32s ease;
+}
+
+.wall-drawer-scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.wall-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1050;
+  width: min(92vw, 348px);
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(30px) saturate(170%);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  border-left: 1px solid var(--border);
+  box-shadow: -18px 0 48px -18px rgba(0, 0, 0, 0.4);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition:
+    transform 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0.42s;
+}
+
+.wall-drawer.is-open {
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.wall-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 18px 18px 12px;
+  flex-shrink: 0;
+}
+
+.wall-drawer-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-strong);
+}
+
+.wall-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.wall-drawer-close:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.wall-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 18px 20px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.wall-drawer-body::-webkit-scrollbar {
+  display: block;
+  width: 4px;
+}
+
+.wall-drawer-body::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: var(--border-strong);
+}
+
+.wall-section-label {
+  display: block;
+  margin: 18px 0 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* 抽屉里的壁纸网格 */
+.wall-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+/* 分组标题：占满一行，把「影像」和「插画」隔开 */
+.wall-group-label {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
+.wall-group-label:first-of-type {
+  margin-top: 2px;
+}
+
+.wall-card {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background-color: var(--surface-soft);
+  background-size: cover;
+  background-position: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  transition: transform 0.26s var(--ease-spring, cubic-bezier(0.34, 1.4, 0.64, 1)), box-shadow 0.26s ease;
+}
+
+.wall-card:hover {
+  transform: translateY(-2px);
+}
+
+.wall-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wall-card[aria-checked="true"] {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.24),
+    0 0 0 2px var(--accent);
+}
+
+.wall-card-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 14px 7px 6px;
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: left;
+  color: #fff;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.66), transparent);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* 纯色/无壁纸选项：做成一条横向开关，而不是一张同尺寸卡片 ——
+   卡片形态在深色抽屉里是个纯黑方块，既不好看也不好认。 */
+.wall-card.is-plain {
+  grid-column: 1 / -1;
+  aspect-ratio: auto;
+  height: 42px;
+  background-image: linear-gradient(
+    135deg,
+    transparent 47%,
+    var(--border-strong) 47%,
+    var(--border-strong) 53%,
+    transparent 53%
+  );
+  background-color: var(--surface-soft);
+}
+
+.wall-card.is-plain .wall-card-name {
+  position: static;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: none;
+  text-shadow: none;
+}
+
+/* 滑杆 */
+.wall-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+}
+
+.wall-slider-label {
+  flex: 0 0 52px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wall-slider input[type="range"] {
+  flex: 1;
+  height: 3px;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 3px;
+  background: var(--border-strong);
+  outline: none;
+  cursor: pointer;
+}
+
+.wall-slider input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+
+.wall-slider input[type="range"]::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.wall-slider-value {
+  flex: 0 0 34px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-faint);
+}
+
+/* 开关 */
+.wall-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wall-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: background-color 0.24s ease;
+}
+
+.wall-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wall-switch[aria-checked="true"] {
+  background: var(--accent);
+}
+
+.wall-switch[aria-checked="true"]::after {
+  transform: translateX(16px);
+}
+
+.wall-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   六、响应式
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 767px) {
+  .wall-dock {
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 手机上缩略图轨道改为可横滑，避免超出屏幕 */
+  .wall-dock-list {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .wall-dock.is-open .wall-dock-list {
+    max-width: calc(100vw - 96px);
+  }
+
+  .wall-thumb {
+    width: 44px;
+    height: 30px;
+  }
+
+  .wall-drawer {
+    width: 100vw;
+    max-width: 100vw;
+    border-left: 0;
+  }
+
+  .wall-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 页脚别被底部胶囊挡住 */
+html[data-wall="on"] .site-footer {
+  padding-bottom: calc(24px + 62px);
+}
+
+/* --------------------------------------------------------------------------
+   六、切换期间的运行时降级（html[data-wall-fading]）
+   --------------------------------------------------------------------------
+   这一整段只在「壁纸正在交叉淡入」的那 880ms 里生效，由 wallpaper.js 的
+   beginFade()/endFade() 开关，平时完全不存在。
+
+   为什么需要它：交叉淡入会让「背景」本身每帧都在变。凡是挂了 backdrop-filter
+   的元素，浏览器都必须按它自己的面积重新采样一遍背景再模糊。页面上有 23 个
+   这样的元素，其中十几个是小胶囊，真正吃面积的是顶栏、搜索框、底部胶囊和抽屉。
+   背景一动，这些全都要重算 —— 这就是切换时掉帧的主因。
+
+   降级做法：切图期间把它们退回成普通半透明底。
+   视觉代价可以接受，因为：① 这 880ms 里整屏画面本来就在过渡，没人会去比对
+   玻璃厚度；② 元素底色只差几个百分点的不透明度，不是跳成实色；
+   ③ 淡入一结束立刻恢复模糊，用户看到的稳定态和优化前完全一致。
+   -------------------------------------------------------------------------- */
+
+html[data-wall-fading] .kbd-hint,
+html[data-wall-fading] .status-pill,
+html[data-wall-fading] .chat-editor-content,
+html[data-wall-fading] .publisher-shortcut__link,
+html[data-wall-fading] .explore-chip,
+html[data-wall-fading] .wall-glass,
+html[data-wall-fading] .wall-dock,
+html[data-wall-fading] .wall-drawer,
+html[data-wall-fading] .wall-drawer-scrim,
+html[data-wall-fading] .results-header::before,
+html[data-wall-fading] .plugin-scroll-arrow,
+html[data-wall-fading] .cmdk-overlay {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 噪点层用的是 mix-blend-mode: overlay。混合模式要求合成器先回读底图再混合，
+   底图在动的时候这一层同样每帧重算。切图期间把它淡到 0（不改混合模式，
+   否则会露出半透明的灰膜），淡完再淡回来。
+   0.14 的细噪点在 200ms 里进出，肉眼基本无从察觉。 */
+html[data-wall-fading] .wall-grain {
+  opacity: 0;
+}
+
+/* --------------------------------------------------------------------------
+   七、可访问性
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .wall-layer {
+    transition-duration: 1ms;
+  }
+
+  html[data-wall-tone],
+  body,
+  .wall-scrim,
+  .wall-veil {
+    transition-duration: 1ms;
+  }
+
+  .wall-dock-handle,
+  .wall-thumb,
+  .wall-card {
+    transition-duration: 1ms;
+  }
+}

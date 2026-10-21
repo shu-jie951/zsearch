@@ -1,0 +1,29 @@
+# 与 .gitignore 同源：镜像里不需要依赖、产物和备份
+node_modules
+npm-debug.log*
+
+# 运行时数据
+data
+*.log
+_server.log
+
+# 质检与截图产物
+_e2e_report.json
+_perf_wall_*.json
+_editor_*.png
+preview-fade-*.png
+_shot_*.png
+_t*.json
+_hhp*.json
+_tmp_*.js
+
+# 备份与版本控制
+_bak
+.git
+.gitignore
+
+# 编辑器 / 系统
+.vscode
+.idea
+.DS_Store
+Thumbs.db

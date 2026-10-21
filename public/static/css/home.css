@@ -1,0 +1,1179 @@
+/* ==========================================================================
+   ZSEARCH · 首页
+   结构：顶栏（品牌 + 快捷面板入口 + 状态） → 中央品牌区 → 玻璃搜索框
+        → 胶囊导航 → 今日探索
+   视觉要点：氛围层在 base.css；此处只负责"纸面上的物件"。
+   ========================================================================== */
+
+body.home-body {
+  width: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow-x: hidden;
+}
+
+/* 首页内容不满一屏时，页脚贴底；内容超出时正常随流滚动 */
+.home-main {
+  justify-content: flex-start;
+}
+
+/* --- 顶栏 ---------------------------------------------------------------- */
+.home-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.home-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  transition: color var(--dur-fast) ease;
+  user-select: none;
+}
+
+.home-header-brand svg {
+  opacity: 0.55;
+  transition: opacity var(--dur-fast) ease, transform var(--dur-base) var(--ease-spring);
+}
+
+.home-header-brand:hover {
+  color: var(--text-strong);
+}
+
+.home-header-brand:hover svg {
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+.home-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* 快捷键提示 */
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--dur-fast) ease;
+  user-select: none;
+}
+
+.kbd-hint:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.kbd-hint-text {
+  letter-spacing: 0.01em;
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+
+.kbd-hint:hover .kbd {
+  color: var(--text-muted);
+  border-color: var(--border-strong);
+}
+
+@media (max-width: 720px) {
+  .kbd-hint-text,
+  .kbd-hint .kbd {
+    display: none;
+  }
+  .kbd-hint {
+    width: 26px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+/* 数据源状态 */
+.home-header .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  user-select: none;
+  white-space: nowrap;
+  transition: border-color var(--dur-fast) ease;
+}
+
+.home-header .status-pill .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+  animation: dot-breathe 2.6s var(--ease-in-out) infinite;
+}
+
+@keyframes dot-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2); }
+  50% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.08); }
+}
+
+.home-header .status-pill.is-fallback .dot {
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+  animation: none;
+}
+
+.home-header .status-pill.is-offline .dot {
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+  animation: none;
+}
+
+/* --- 主区 ---------------------------------------------------------------- */
+.home-main {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  padding-top: max(44px, calc((100dvh - 620px) / 2.4));
+  padding-bottom: 24px;
+  position: relative;
+  z-index: 10;
+}
+
+/* 联想展开时：把下方导航 / 探索区整体推开，避免下拉浮层遮挡内容 */
+.home-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.suggest-open .home-plugins-scroll-wrapper,
+.suggest-open .home-explore {
+  opacity: 0.35;
+  filter: blur(0.5px);
+  transition: opacity var(--dur-base) var(--ease-out), filter var(--dur-base) var(--ease-out);
+  pointer-events: none;
+}
+
+/* --- 品牌区 -------------------------------------------------------------- */
+.home-logo-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  user-select: none;
+  margin-bottom: 34px;
+}
+
+.home-logo-block .brand-mark {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.home-logo-block .brand-mark svg {
+  height: clamp(38px, 6vw, 50px);
+}
+
+/* 字标上缓慢扫过的高光：一次 7s，间隔留白，不打扰 */
+.brand-shine {
+  position: absolute;
+  top: -40%;
+  left: -60%;
+  width: 42%;
+  height: 180%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text-strong) 12%, transparent) 45%,
+    transparent 100%
+  );
+  transform: skewX(-18deg);
+  pointer-events: none;
+  animation: shine-sweep 7s var(--ease-in-out) infinite;
+  animation-delay: 1.6s;
+}
+
+@keyframes shine-sweep {
+  0% { left: -60%; opacity: 0; }
+  8% { opacity: 1; }
+  42% { left: 118%; opacity: 1; }
+  43%, 100% { left: 118%; opacity: 0; }
+}
+
+.home-logo-sub {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+.home-logo-sub .sub-line {
+  width: 22px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border-strong), transparent);
+  flex-shrink: 0;
+}
+
+/* --- 搜索框（玻璃质感） -------------------------------------------------- */
+.chat-editor-content {
+  position: relative;
+  width: 100%;
+  /* 柔光锚点：默认居中，pointermove 时由 JS 改写成 px 值。
+     在这里显式给默认值，静态审查才认它是"已定义"（fallback 不算）。 */
+  --fx: 50%;
+  --fy: 50%;
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+  cursor: text;
+}
+
+/* 聚焦光晕：用伪元素，不触发重排 */
+.chat-editor-content::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 0 0 4px var(--accent-soft), 0 12px 40px -12px var(--accent-glow);
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.chat-editor-content:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
+}
+
+.chat-editor-content:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+.chat-editor-content:focus-within::after {
+  opacity: 1;
+}
+
+/* 就绪提示：未聚焦时给一道极淡的呼吸描边，暗示"可以输入" */
+.chat-editor-content:not(:focus-within)::after {
+  opacity: 0;
+}
+
+/* 顶部一道极细的内高光，模拟玻璃边缘 */
+.chat-editor-content::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  z-index: 2;
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--text-strong) 12%, transparent), transparent);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   智能交互层
+   三件事，全部只动合成/绘制，不碰布局：
+     1. 柔光跟着指针走（pointermove → rAF 合并 → 只写两个 CSS 变量）
+     2. 聚焦时顶边一道流光扫过（1px 高的元素，只动 background-position）
+     3. 输入时的意图识别胶囊 + 清空按钮
+   -------------------------------------------------------------------------- */
+
+/* 1. 柔光 */
+.editor-aura {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.42s var(--ease-out);
+  background: radial-gradient(
+    190px circle at var(--fx, 50%) var(--fy, 50%),
+    color-mix(in srgb, var(--accent) 14%, transparent),
+    transparent 68%
+  );
+}
+
+.chat-editor-content:focus-within .editor-aura {
+  opacity: 1;
+}
+
+/* 内容必须压在柔光之上，否则光会盖住文字 */
+.chat-editor-content > .chat-input {
+  position: relative;
+  z-index: 1;
+}
+
+/* 2. 流光扫边：只在聚焦时挂，失焦立刻停（不留下常驻动画） */
+.chat-editor-content:focus-within::before {
+  left: 0;
+  right: 0;
+  background-image: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
+  background-repeat: no-repeat;
+  background-size: 34% 100%;
+  background-position: -40% 0;
+  animation: edge-sweep 2.8s var(--ease-in-out) infinite;
+}
+
+@keyframes edge-sweep {
+  0%   { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
+}
+
+/* 3a. 意图识别胶囊 —— 状态提示，不是按钮，所以 pointer-events: none */
+.editor-intent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: intent-in 0.34s var(--ease-spring) both;
+}
+
+/* 属性选择器的优先级低于 .editor-intent，必须显式写回 display:none，
+   否则 JS 摘掉 hidden 之后视觉上"消失"不了 */
+.editor-intent[hidden] {
+  display: none;
+}
+
+.editor-intent__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+@keyframes intent-in {
+  from { opacity: 0; transform: translateY(3px) scale(0.94); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 3b. 清空按钮 */
+.editor-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  animation: intent-in 0.24s var(--ease-spring) both;
+  transition:
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    transform 0.2s var(--ease-spring);
+}
+
+.editor-clear[hidden] {
+  display: none;
+}
+
+.editor-clear:hover {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+  transform: scale(1.06);
+}
+
+.editor-clear:active {
+  transform: scale(0.92);
+}
+
+.chat-input {
+  padding: 20px 20px 14px 22px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.chat-input-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 76px;
+}
+
+.chat-input-ghost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-height: 76px;
+  padding: 2px 0 0 0;
+  margin: 0;
+  font-size: 18px;
+  line-height: 30px;
+  font-family: inherit;
+  letter-spacing: inherit;
+  word-break: break-word;
+  white-space: pre-wrap;
+  overflow: hidden;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
+  z-index: 3;
+}
+
+.ghost-prefix {
+  visibility: hidden;
+  color: transparent;
+}
+
+.ghost-suffix {
+  color: var(--text-faint);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.ghost-caret {
+  display: inline-block;
+  width: 1px;
+  height: 19px;
+  margin-left: 1px;
+  vertical-align: -4px;
+  background: var(--text-muted);
+  animation: caret-blink 1.05s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.chat-input-editor {
+  position: relative;
+  z-index: 4;
+  width: 100%;
+  min-height: 76px;
+  max-height: 220px;
+  padding: 2px 0 0 0;
+  margin: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 30px;
+  color: var(--text);
+  caret-color: var(--accent);
+  overflow-y: auto;
+  display: block;
+  letter-spacing: inherit;
+}
+
+.chat-input-editor::placeholder {
+  color: var(--text-faint);
+}
+
+.chat-editor-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  gap: 8px;
+}
+
+.chat-editor-action .left-area,
+.chat-editor-action .right-area {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.suggest-btn-container,
+.voice-btn-container,
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.suggest-btn-container:hover,
+.voice-btn-container:hover,
+.icon-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+}
+
+.voice-btn-container {
+  width: 34px;
+  padding: 0;
+}
+
+.icon-button {
+  padding: 0 11px;
+}
+
+.suggest-btn-container.active {
+  color: var(--accent);
+  font-weight: 500;
+  background: var(--accent-soft);
+}
+
+.suggest-btn-container.active svg {
+  opacity: 1;
+}
+
+.suggest-btn-container svg {
+  opacity: 0.85;
+}
+
+.voice-btn-container.listening-active {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  animation: mic-pulse 1.4s infinite;
+}
+
+@keyframes mic-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+  70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.send-button-container {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  color: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition: all var(--dur-base) var(--ease-out);
+  padding: 0;
+  opacity: 0.75;
+}
+
+.send-button-container.active {
+  background: var(--text-strong);
+  color: var(--bg-elevated);
+  cursor: pointer;
+  box-shadow: 0 3px 10px -2px rgba(0, 0, 0, 0.28);
+  opacity: 1;
+}
+
+.send-button-container.active:hover {
+  transform: scale(1.06);
+  box-shadow: 0 5px 16px -3px rgba(0, 0, 0, 0.34);
+}
+
+.send-button-container.active:active {
+  transform: scale(0.94);
+}
+
+@media (prefers-color-scheme: dark) {
+  .send-button-container.active {
+    background: #ffffff;
+    color: #0e0e11;
+    box-shadow: 0 3px 12px -2px rgba(255, 255, 255, 0.22);
+  }
+  .send-button-container.active:hover {
+    box-shadow: 0 5px 18px -3px rgba(255, 255, 255, 0.28);
+  }
+}
+
+/* --- 联想下拉 ------------------------------------------------------------ */
+/* 用 fixed 定位，避免任何父级 offsetParent / transform 造成的错位。
+   坐标由 JS 用搜索框的 getBoundingClientRect() 直接写入。 */
+.suggest-dropdown-menu {
+  position: fixed;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 300;
+  max-height: 320px;
+  overflow-y: auto;
+  transform-origin: top center;
+  animation: dropdown-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.suggest-dropdown-menu.hidden {
+  display: none;
+}
+
+.suggest-group-label {
+  padding: 8px 12px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease;
+  user-select: none;
+}
+
+.suggest-item:hover,
+.suggest-item.selected {
+  background: var(--surface-hover);
+}
+
+.suggest-item-icon {
+  color: var(--text-faint);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  transition: color var(--dur-fast) ease;
+}
+
+.suggest-item:hover .suggest-item-icon,
+.suggest-item.selected .suggest-item-icon,
+.suggest-item:hover .suggest-title,
+.suggest-item.selected .suggest-title {
+  color: var(--text-strong);
+}
+
+.suggest-title {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 匹配片段高亮 */
+.suggest-title mark {
+  background: transparent;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.suggest-item-tail {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  padding-left: 8px;
+}
+
+/* --- 胶囊导航 ------------------------------------------------------------ */
+.home-plugins-scroll-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 768px;
+  margin: 20px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-plugins-track {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 4px 14px;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  mask-image: linear-gradient(to right, transparent 0%, #000 16px, #000 calc(100% - 16px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 16px, #000 calc(100% - 16px), transparent 100%);
+}
+
+.home-plugins-track::-webkit-scrollbar {
+  display: none;
+}
+
+.plugin-scroll-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) ease, transform var(--dur-fast) ease,
+    background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  user-select: none;
+  outline: none;
+  padding: 0;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.plugin-scroll-arrow.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.plugin-scroll-arrow:hover {
+  background: var(--surface-soft);
+  color: var(--text-strong);
+  transform: translateY(-50%) scale(1.06);
+}
+
+.plugin-scroll-arrow.left {
+  left: 0;
+}
+
+.plugin-scroll-arrow.right {
+  right: 0;
+}
+
+/* 胶囊按钮 */
+.publisher-shortcut__line {
+  box-sizing: border-box;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+}
+
+.publisher-shortcut__link {
+  color: var(--text-muted);
+  gap: 6px;
+  outline-offset: 2px;
+  border-radius: 20px;
+  flex-shrink: 0;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 16px 0 13px;
+  font-size: 13.5px;
+  line-height: 20px;
+  font-weight: 400;
+  cursor: pointer;
+  user-select: none;
+  background-color: transparent;
+  border: 1px solid var(--border);
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
+    transform var(--dur-base) var(--ease-spring), border-color var(--dur-fast) ease;
+}
+
+.publisher-shortcut__link:hover {
+  background-color: var(--surface-hover);
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.publisher-shortcut__link:active {
+  background-color: var(--surface-soft);
+  transform: translateY(0) scale(0.98);
+}
+
+.linear-icon-button__icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  opacity: 0.65;
+  transition: opacity var(--dur-fast) ease;
+}
+
+.publisher-shortcut__link:hover .linear-icon-button__icon {
+  opacity: 0.95;
+}
+
+/* --- 今日探索 ------------------------------------------------------------ */
+.home-explore {
+  width: 100%;
+  margin-top: 36px;
+  padding-top: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+/* 一条极淡的分隔，把"搜索区"与"探索区"分层 */
+.home-explore::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 22%;
+  right: 22%;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border), transparent);
+}
+
+.explore-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.explore-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+  position: relative;
+  padding: 0 2px;
+}
+
+.explore-hint {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  opacity: 0.85;
+  letter-spacing: 0.02em;
+}
+
+.explore-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 620px;
+}
+
+.explore-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--dur-base) var(--ease-out);
+}
+
+.explore-chip .chip-idx {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+.explore-chip:hover {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border-strong));
+  background: var(--bg-elevated);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.explore-chip:hover .chip-idx {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.explore-chip:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* --- 快捷面板 ------------------------------------------------------------ */
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 14vh 16px 16px;
+  background: color-mix(in srgb, var(--bg) 45%, rgba(0, 0, 0, 0.28));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: overlay-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.cmdk-overlay.hidden {
+  display: none;
+}
+
+.cmdk-panel {
+  width: 100%;
+  max-width: 520px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: panel-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.cmdk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cmdk-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.cmdk-close {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--dur-fast) ease;
+}
+
+.cmdk-close:hover {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+}
+
+.cmdk-body {
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.cmdk-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-soft);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.cmdk-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cmdk-foot .kbd {
+  background: var(--bg-elevated);
+}
+
+/* 面板内的行（复用联想条目样式语言） */
+.cmdk-empty {
+  padding: 26px 16px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  line-height: 1.7;
+}
+
+/* --- 响应式 -------------------------------------------------------------- */
+@media (min-width: 640px) {
+  .home-plugins-track {
+    justify-content: center;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  .plugin-scroll-arrow {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .home-header {
+    padding: 10px 16px;
+  }
+  .home-main {
+    padding-top: max(36px, calc((100dvh - 520px) / 3.4));
+  }
+  .home-logo-block {
+    margin-bottom: 26px;
+  }
+  .chat-input {
+    padding: 14px 14px 10px 16px;
+  }
+  /* 小屏上搜索框不再追高度，但字号不能缩回 16 —— iOS 上小于 16px 会自动放大页面 */
+  .chat-input-wrapper,
+  .chat-input-ghost,
+  .chat-input-editor {
+    min-height: 62px;
+  }
+  .chat-input-editor,
+  .chat-input-ghost {
+    font-size: 17px;
+    line-height: 26px;
+  }
+  /* 意图胶囊在窄屏会挤掉右侧按钮，直接不显示（按钮比提示重要） */
+  .editor-intent {
+    display: none;
+  }
+  .home-explore {
+    margin-top: 24px;
+  }
+  .explore-chips {
+    gap: 7px;
+  }
+  .cmdk-overlay {
+    padding-top: 9vh;
+  }
+}
+
+/* 矮屏（笔记本横屏）时收紧纵向留白，避免内容溢出 */
+@media (max-height: 680px) {
+  .home-main {
+    padding-top: 24px;
+  }
+  .home-logo-block {
+    margin-bottom: 22px;
+  }
+  .home-explore {
+    margin-top: 20px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   减少动效：把新增的三处"氛围型"动效全部摘掉，功能一个不少
+   —— 柔光消失、流光停住、胶囊与清空按钮改为直接出现（不做位移动画）
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .editor-aura {
+    display: none;
+  }
+
+  .chat-editor-content:focus-within::before {
+    animation: none;
+    background-position: 50% 0;
+  }
+
+  .editor-intent,
+  .editor-clear {
+    animation-duration: 1ms;
+  }
+
+  .editor-clear:hover,
+  .editor-clear:active {
+    transform: none;
+  }
+}

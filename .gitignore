@@ -1,0 +1,31 @@
+# ---------- 依赖 ----------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ---------- 运行时数据 ----------
+# 缓存、源健康度、熔断状态等，都是跑起来自己生成的
+data/
+_server.log
+*.log
+
+# ---------- 质检 / 截图产物 ----------
+# 这些都能由仓库里的脚本重新生成，不进版本库（否则每次跑质检都脏工作区）
+_e2e_report.json
+_perf_wall_*.json
+_editor_*.png
+preview-fade-*.png
+_shot_*.png
+_t*.json
+_hhp*.json
+_tmp_*.js
+
+# 原地改之前的整目录备份快照
+_bak/
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

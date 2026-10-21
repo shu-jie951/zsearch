@@ -1,0 +1,364 @@
+/* ==========================================================================
+   ZSEARCH · 基础样式
+   设计语言：静谧、克制、有层次（Quiet Premium）
+   —— 低饱和中性灰打底，一处极窄色相的暖橙做点睛；
+   —— 大量留白 + 极细描边 + 多层柔和阴影制造"纸面浮起"感；
+   —— 所有视觉元素仅用 CSS/SVG，不依赖任何外部图片，离线依然完整。
+   ========================================================================== */
+
+:root {
+  /* --- 表面与文字 --------------------------------------------------------- */
+  --bg: #fbfaf9;
+  --bg-elevated: #ffffff;
+  --text: #0f1115;
+  --text-strong: #18181b;
+  --text-muted: #71717a;
+  --text-faint: #a1a1aa;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --surface-hover: rgba(0, 0, 0, 0.05);
+  --surface-soft: #f4f4f5;
+
+  /* --- 点睛色（窄色相暖橙，只用于极小面积） -------------------------------- */
+  --accent: hsl(22, 76%, 52%);
+  --accent-soft: hsla(22, 76%, 52%, 0.1);
+  --accent-glow: hsla(22, 76%, 52%, 0.22);
+
+  /* --- 氛围色（背景极光，饱和度压得很低） -------------------------------- */
+  --aura-1: rgba(255, 168, 112, 0.2);
+  --aura-2: rgba(146, 178, 255, 0.16);
+  --aura-3: rgba(196, 168, 255, 0.12);
+  --grain-opacity: 0.028;
+  --grid-opacity: 0.5;
+
+  /* --- 圆角 --------------------------------------------------------------- */
+  --radius-pill: 9999px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+
+  /* --- 阴影：三层叠加（贴身描边影 + 中层扩散 + 远景弥散） ------------------ */
+  --shadow-sm:
+    0 1px 2px 0 rgba(15, 17, 21, 0.03),
+    0 2px 8px 0 rgba(15, 17, 21, 0.025);
+  --shadow-md:
+    0 1px 2px -1px rgba(15, 17, 21, 0.06),
+    0 4px 12px -2px rgba(15, 17, 21, 0.05),
+    0 12px 32px -8px rgba(15, 17, 21, 0.055);
+  --shadow-lg:
+    0 1px 2px -1px rgba(15, 17, 21, 0.07),
+    0 8px 24px -4px rgba(15, 17, 21, 0.07),
+    0 28px 64px -16px rgba(15, 17, 21, 0.1);
+  --ring-accent: 0 0 0 4px var(--accent-soft);
+
+  /* --- 动效曲线 ----------------------------------------------------------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 0.15s;
+  --dur-base: 0.24s;
+  --dur-slow: 0.42s;
+
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-serif: "YuMin-Medium", YuMincho, "Songti SC", "SimSun", Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0e11;
+    --bg-elevated: #1a1a1e;
+    --text: #f4f4f5;
+    --text-strong: #ffffff;
+    --text-muted: #a1a1aa;
+    --text-faint: #71717a;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --surface-hover: rgba(255, 255, 255, 0.06);
+    --surface-soft: #27272a;
+
+    --accent-soft: hsla(22, 76%, 58%, 0.14);
+    --accent-glow: hsla(22, 76%, 58%, 0.3);
+
+    --aura-1: rgba(255, 152, 92, 0.22);
+    --aura-2: rgba(108, 142, 235, 0.2);
+    --aura-3: rgba(160, 132, 235, 0.15);
+    --grain-opacity: 0.04;
+    --grid-opacity: 0.42;
+
+    --shadow-sm:
+      0 1px 2px 0 rgba(0, 0, 0, 0.4),
+      0 2px 8px 0 rgba(0, 0, 0, 0.24);
+    --shadow-md:
+      0 1px 2px -1px rgba(0, 0, 0, 0.5),
+      0 4px 14px -2px rgba(0, 0, 0, 0.34),
+      0 14px 36px -10px rgba(0, 0, 0, 0.42);
+    --shadow-lg:
+      0 1px 2px -1px rgba(0, 0, 0, 0.55),
+      0 10px 28px -6px rgba(0, 0, 0, 0.42),
+      0 32px 72px -18px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   重置
+   -------------------------------------------------------------------------- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+  font-feature-settings: "kern" 1;
+  text-rendering: optimizeLegibility;
+  position: relative;
+  isolation: isolate;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+input,
+button,
+textarea,
+select {
+  font-family: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: var(--accent-glow);
+  color: var(--text-strong);
+}
+
+/* ==========================================================================
+   氛围层：极光 · 网格 · 噪点 · 暗角
+   全部为纯 CSS 绘制，无外部图片；fixed 定位 + z-index:-1，不参与交互。
+   刻意压到"几乎察觉不到"的强度——高级感来自层次，不来自装饰。
+   ========================================================================== */
+
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+/* 极光团：三块大半径径向渐变，缓和漂移 */
+.atmosphere .aura {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  will-change: transform;
+}
+
+.atmosphere .aura-1 {
+  top: -34vh;
+  left: 50%;
+  width: 96vw;
+  height: 96vh;
+  margin-left: -58vw;
+  background: radial-gradient(circle at 50% 50%, var(--aura-1) 0%, transparent 62%);
+  animation: aura-drift-a 26s var(--ease-in-out) infinite alternate;
+}
+
+.atmosphere .aura-2 {
+  top: 6vh;
+  right: -26vw;
+  width: 76vw;
+  height: 76vh;
+  background: radial-gradient(circle at 50% 50%, var(--aura-2) 0%, transparent 60%);
+  animation: aura-drift-b 34s var(--ease-in-out) infinite alternate;
+}
+
+.atmosphere .aura-3 {
+  bottom: -30vh;
+  left: -22vw;
+  width: 70vw;
+  height: 70vh;
+  background: radial-gradient(circle at 50% 50%, var(--aura-3) 0%, transparent 60%);
+  animation: aura-drift-c 40s var(--ease-in-out) infinite alternate;
+}
+
+@keyframes aura-drift-a {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to   { transform: translate3d(4%, 3%, 0) scale(1.08); }
+}
+@keyframes aura-drift-b {
+  from { transform: translate3d(0, 2%, 0) scale(1.04); }
+  to   { transform: translate3d(-5%, -4%, 0) scale(0.96); }
+}
+@keyframes aura-drift-c {
+  from { transform: translate3d(2%, 0, 0) scale(0.98); }
+  to   { transform: translate3d(-3%, -3%, 0) scale(1.06); }
+}
+
+/* 精细网格：极淡，仅作为"技术感"的底纹 */
+.atmosphere .grid {
+  position: absolute;
+  inset: -1px;
+  opacity: var(--grid-opacity);
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 82% 62% at 50% 34%, #000 0%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 82% 62% at 50% 34%, #000 0%, transparent 78%);
+}
+
+/* 噪点：用 SVG feTurbulence 内联为 data URI（仍属纯 SVG，无外部文件） */
+.atmosphere .grain {
+  position: absolute;
+  inset: 0;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  mix-blend-mode: overlay;
+}
+
+/* 暗角：把视线收拢到中央（强度克制，只压边缘 20% 左右） */
+.atmosphere .vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 138% 108% at 50% 38%, transparent 62%, var(--bg) 128%);
+}
+
+/* --------------------------------------------------------------------------
+   品牌字标
+   -------------------------------------------------------------------------- */
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-strong);
+  transition: opacity var(--dur-base) var(--ease-out);
+  position: relative;
+}
+
+.brand-mark:hover {
+  opacity: 0.82;
+}
+
+.brand-mark svg {
+  display: block;
+  height: clamp(36px, 5.5vw, 46px);
+  width: auto;
+}
+
+/* --------------------------------------------------------------------------
+   页脚
+   -------------------------------------------------------------------------- */
+.site-footer {
+  width: 100%;
+  padding: 24px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.site-footer .footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.site-footer a {
+  transition: color var(--dur-fast) ease;
+}
+
+.site-footer a:hover {
+  color: var(--text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   通用：焦点可见性（键盘用户）
+   -------------------------------------------------------------------------- */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   通用：入场编排
+   给同一容器内的子元素加 .reveal，按 --i 依次浮现
+
+   ⚠️ 关键：动画结束后必须让 transform 回到 none。
+   带 transform 的元素会成为后代的"包含块"，使后代的 position:fixed
+   退化成相对该元素定位（联想下拉框曾因此整体偏移）。
+   这里用 animation-fill-mode: forwards 保持终态，并在终态把 transform
+   显式设为 none —— 由于 keyframe 里 to 是 translateY(0)，等价于 none，
+   但浏览器仍会把它识别为"有 transform"。
+   因此动画结束后由动画事件移除 .reveal 类（见 home.js）。
+   -------------------------------------------------------------------------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: reveal-up 0.72s var(--ease-out) forwards;
+  animation-delay: calc(var(--i, 0) * 80ms + 60ms);
+}
+
+@keyframes reveal-up {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 动画跑完由 JS 打上 done，彻底摘掉 transform / animation，
+   恢复干净的包含块，保证后代 fixed 元素定位正确 */
+.reveal.reveal-done {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+
+/* --------------------------------------------------------------------------
+   降低动态偏好：尊重系统设置
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}
