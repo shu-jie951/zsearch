@@ -40,7 +40,10 @@
 
   var STORE_KEY = 'zsearch.wall.v1';
   var AUTOPLAY_MS = 45000;
-  var FADE_MS = 880;
+  // 交叉淡入时长。必须与 wallpaper.css 的 --wp-dur 一致（那里是 520ms）。
+  // 原来 880ms：两张全屏照片叠加的时间太长，视觉上很容易看成"重影/图片重叠"，
+  // 而且切一次要等将近一秒才落定。520ms 足够柔，又不会留下可辨认的双影。
+  var FADE_MS = 520;
 
   // 默认用 02「夜湖倒影」：
   //   壁纸的第一要务是不干扰内容。这张是单一冷色调 + 对称构图 + 大片留白水面，
@@ -196,9 +199,66 @@
   }
 
   /**
+   * 壁纸鼠标视差。
+   *
+   * 这是"高级感"里最便宜也最有效的一招：整张背景随鼠标做几像素的反向位移，
+   * 前景卡片不动 —— 人眼立刻会把它读成「背景在后面，内容在前面」。
+   *
+   * 三条纪律：
+   *   1. 只改 transform（合成器线程），绝不改 top/left/margin；
+   *   2. 用缓动跟随而不是直接赋值，鼠标一动图就瞬移的话会显得廉价；
+   *   3. 触屏、prefers-reduced-motion 一律不启用 —— 手机上没有"悬停"这回事，
+   *      跟着手指晃只会晕。
+   *
+   * 缓动用 rAF 自驱动：只有"还没追上目标"时才继续请求下一帧，
+   * 停下之后彻底不再占用主线程。
+   */
+  function initParallax() {
+    var reduce =
+      window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+
+    var AMP = 12;           // 最大位移（px），再大就不是纵深而是晃
+    var EASE = 0.12;        // 每帧靠近目标的比例
+    var tx = 0, ty = 0;     // 目标
+    var cx = 0, cy = 0;     // 当前
+    var raf = 0;
+
+    function tick() {
+      raf = 0;
+      cx += (tx - cx) * EASE;
+      cy += (ty - cy) * EASE;
+      root.style.setProperty('--wp-px', cx.toFixed(2) + 'px');
+      root.style.setProperty('--wp-py', cy.toFixed(2) + 'px');
+      if (Math.abs(tx - cx) > 0.08 || Math.abs(ty - cy) > 0.08) {
+        raf = window.requestAnimationFrame(tick);
+      }
+    }
+
+    window.addEventListener(
+      'pointermove',
+      function (e) {
+        if (e.pointerType === 'touch') return;
+        // 反向位移：鼠标往右，背景往左，产生"视差"而不是"跟随"
+        tx = (e.clientX / window.innerWidth - 0.5) * -2 * AMP;
+        ty = (e.clientY / window.innerHeight - 0.5) * -2 * AMP;
+        if (!raf) raf = window.requestAnimationFrame(tick);
+      },
+      { passive: true }
+    );
+
+    // 指针离开窗口时归位，否则背景会一直歪着
+    window.addEventListener('pointerleave', function () {
+      tx = 0;
+      ty = 0;
+      if (!raf) raf = window.requestAnimationFrame(tick);
+    });
+  }
+  /**
    * 壁纸层交叉淡入。
    * 关键点：新图必须塞进「当前不可见」的那一层，并且先把它无过渡归零，
    * 否则连续切换时会出现硬切。
+   * 旧层必须**同步**淡出，不能等新层盖满再瞬间归零 —— 见 paint() 里的说明。
    */
   function renderWallpaper(animate) {
     var wall = state.id ? findWall(state.id) : null;
@@ -245,15 +305,26 @@
       next.style.transition = '';
       void next.offsetWidth;
       next.classList.add('is-on');
+
+      // 3) 旧层**同步**淡出，做真正的交叉淡入。
+      //
+      //    旧写法是让旧层一直保持 opacity:1，等新层淡满（880ms）后再瞬间归零。
+      //    问题：中间那段时间是「新图渐显 + 旧图全亮」的叠加态，两张全屏照片
+      //    构图不同，看起来就是两张图糊在一起 —— 用户报的"图片重叠"就是这个。
+      //    同时把两层的 is-on 一起翻掉，两层各自过渡，中点约等于 50/50 混合，
+      //    观感是渐变而不是重影，也不会出现"旧图突然消失"的硬切。
+      cur.style.transition = '';
+      cur.classList.remove('is-on');
+
       activeIdx = 1 - activeIdx;
 
-      // 3) 淡入完成后，把旧层无过渡清掉（此时已被完全遮住，看不出）
+      // 4) 过渡结束后收尾：
+      //    旧层可能还留着上一次非动画切换时写进去的 inline transition:none，
+      //    这里统一清干净，并撤掉降级标记。
       window.setTimeout(function () {
         if (mySeq !== switchSeq) return;
-        cur.style.transition = 'none';
-        cur.classList.remove('is-on');
-        void cur.offsetWidth;
         cur.style.transition = '';
+        cur.classList.remove('is-on');
         endFade();
       }, FADE_MS + 20);
     }
@@ -756,6 +827,10 @@
 
     loadState();
     apply('init');
+
+    // 视差挂在首屏之后：它只影响鼠标移动时的几像素位移，
+    // 和首屏渲染没有先后依赖，放这里不抢关键路径。
+    initParallax();
 
     document.addEventListener('keydown', onKeydown);
 

@@ -160,9 +160,12 @@ const ok = (cond, label, extra) => {
 
   console.log('\n【静止态】');
   ok(rest.fading === null, '没有 data-wall-fading 残留');
-  ok(/blur\(/.test(String(rest.cardBd)), '搜索框保留 backdrop-filter', rest.cardBd);
-  ok(/blur\(/.test(String(rest.pillBd)), '顶栏胶囊保留 backdrop-filter', rest.pillBd);
-  ok(Math.abs(parseFloat(rest.grainOpacity) - 0.14) < 0.02, '噪点层 opacity ≈ 0.14', rest.grainOpacity);
+  // 2026-10-21 需求变更：全站去掉玻璃特效，改为雾面实色。
+  // 断言从"有模糊"翻转为"任何状态下都没有模糊" —— 这条现在比以前更严：
+  // 以前只要求静止态有 blur，现在要求静止/切换/结束三态都必须是 none。
+  ok(rest.cardBd === 'none', '搜索框没有 backdrop-filter（已改雾面实色）', rest.cardBd);
+  ok(rest.pillBd === 'none', '顶栏胶囊没有 backdrop-filter', rest.pillBd);
+  ok(Math.abs(parseFloat(rest.grainOpacity) - 0.05) < 0.02, '噪点层 opacity ≈ 0.05（压到几乎不可见）', rest.grainOpacity);
   ok(rest.grainBlend === 'overlay', '噪点层保持 overlay 混合', rest.grainBlend);
   ok(rest.layers[0].wc !== 'opacity', '壁纸层平时不留 will-change', rest.layers[0].wc);
   ok(
@@ -213,8 +216,8 @@ const ok = (cond, label, extra) => {
   await sleep(420);
   const mid = await evalJs(SAMPLE);
   ok(mid.fading === '1', 'data-wall-fading 已挂上', mid.fading);
-  ok(mid.cardBd === 'none', '搜索框 backdrop-filter 已降级', mid.cardBd);
-  ok(mid.pillBd === 'none', '顶栏胶囊 backdrop-filter 已降级', mid.pillBd);
+  ok(mid.cardBd === 'none', '搜索框切换途中依然没有 backdrop-filter', mid.cardBd);
+  ok(mid.pillBd === 'none', '顶栏胶囊切换途中依然没有 backdrop-filter', mid.pillBd);
   ok(mid.grainOpacity === '0', '噪点层已淡到 0', mid.grainOpacity);
   ok(mid.grainBlend === 'overlay', '混合模式未改（只动 opacity）', mid.grainBlend);
   ok(mid.layers.every((l) => l.wc === 'opacity'), '壁纸层已提升为合成层', mid.layers.map((l) => l.wc));
@@ -225,8 +228,8 @@ const ok = (cond, label, extra) => {
   await sleep(1800);
   const after = await evalJs(SAMPLE);
   ok(after.fading === null, 'data-wall-fading 已摘除', after.fading);
-  ok(/blur\(/.test(String(after.cardBd)), '搜索框 backdrop-filter 已恢复', after.cardBd);
-  ok(Math.abs(parseFloat(after.grainOpacity) - 0.14) < 0.02, '噪点层已恢复', after.grainOpacity);
+  ok(after.cardBd === 'none', '结束后仍未引入 backdrop-filter（不会"恢复"出玻璃）', after.cardBd);
+  ok(Math.abs(parseFloat(after.grainOpacity) - 0.05) < 0.02, '噪点层已恢复（0.05）', after.grainOpacity);
   ok(after.layers.every((l) => l.wc !== 'opacity'), '壁纸层已释放 will-change', after.layers.map((l) => l.wc));
   await shot(path.join(__dirname, 'preview-fade-done.png'));
 

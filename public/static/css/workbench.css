@@ -90,9 +90,7 @@
   position: fixed;
   inset: 0;
   z-index: 1090;
-  background: rgba(6, 7, 10, 0.34);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  background: rgba(6, 7, 10, 0.46);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.32s ease;
@@ -112,9 +110,7 @@
   width: min(94vw, 424px);
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
-  backdrop-filter: blur(30px) saturate(170%);
-  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
   border-left: 1px solid var(--border);
   box-shadow: -18px 0 48px -18px rgba(0, 0, 0, 0.42);
   transform: translateX(100%);
@@ -916,9 +912,7 @@ a.wb-row-title:hover {
   padding: 9px 16px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  background: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
   box-shadow: var(--shadow-md);
   color: var(--text);
   font-size: 12px;

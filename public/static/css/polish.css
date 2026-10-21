@@ -1,0 +1,124 @@
+/* ==========================================================================
+   ZSEARCH · 质感层（polish）
+   --------------------------------------------------------------------------
+   这一层只放**纯装饰性**的交互特效，不参与任何业务逻辑：
+     1. 卡片聚光   —— 一团跟着光标走的柔光，落在结果卡片上
+     2. 数字滚动   —— 统计数字从 0 滚到目标值
+     3. 长列表渐入 —— 第 12 条之后的行进入视口才渐显
+
+   三条共同遵守的约束（也是这层敢单独拆出来的原因）：
+     · 只改 transform / opacity / 自定义属性 → 走合成器，不触发重排重绘；
+     · 全部尊重 prefers-reduced-motion，用户关了动效就什么都不做；
+     · **不出现 backdrop-filter**。全站玻璃已在 2026-10-21 整体移除，
+       聚光是低透明度 radial-gradient，是「光」不是「磨砂」——
+       用 backdrop-filter 做柔光会重新引入"背景一变就整片重采样"的老毛病。
+   ========================================================================== */
+
+:root {
+  /* 聚光圆心（由 polish.js 的 pointermove 写入，单位 px）。
+     这里必须给显式默认值：静态审查要求"用到的变量必须有定义"。 */
+  --spot-x: 50%;
+  --spot-y: 50%;
+
+  /* 聚光颜色：暖橙降到 7%，只在纸面上染一层几乎看不出的温度。
+     再高就从"高级感"变成"发光按钮"了。 */
+  --spot-color: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* 深色底上同浓度的暖橙几乎不可见，提到 12% 才有同样的存在感 */
+    --spot-color: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   1. 卡片聚光
+   -------------------------------------------------------------------------- */
+
+/* isolation 让 ::before 的 z-index:-1 留在本元素内部：
+   它会盖住卡片自己的背景，但永远在正文之下。
+   没有 isolation 的话负 z-index 会掉到父级背景后面，光就看不见了。 */
+#resultList .result-item {
+  position: relative;
+  isolation: isolate;
+}
+
+#resultList .result-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+  background: radial-gradient(
+    220px circle at var(--spot-x) var(--spot-y),
+    var(--spot-color),
+    transparent 64%
+  );
+}
+
+/* 只有"正在被指向"的那一张亮起来。整页同时亮会变成噪点。 */
+#resultList .result-item.is-spot::before {
+  opacity: 1;
+}
+
+/* 键盘选中时把圆心收到卡片中央 —— 没有光标位置可跟，
+   落在左侧偏上会更自然（视觉重心），而不是死板的正中。 */
+#resultList .result-item.keyboard-focus::before {
+  opacity: 1;
+  --spot-x: 38%;
+  --spot-y: 50%;
+}
+
+/* --------------------------------------------------------------------------
+   2. 数字滚动
+   只为数字本身准备容器层面的稳定，避免滚动过程中宽度抖动
+   （tabular-nums 让每个数字等宽，0→128 不会让整行左右跳）。
+   -------------------------------------------------------------------------- */
+.count-up {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* --------------------------------------------------------------------------
+   3. 长列表懒渐入
+   初始态由 JS 打上 .pending-in 才生效 —— 没有 JS 时列表必须是完整可见的
+   （渐进增强：禁用脚本也不该出现"内容全隐藏"）。
+   -------------------------------------------------------------------------- */
+.result-item.pending-in {
+  opacity: 0;
+}
+
+.result-item.pending-in.in-view {
+  animation: lazy-in 0.44s var(--ease-out);
+}
+
+@keyframes lazy-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ⚠️ 这里刻意**不用** animation-fill-mode: forwards。
+   forwards 会让元素长期挂着非 none 的 transform，而任何带 transform 的祖先
+   都会成为后代的包含块 —— 卡片里有相对定位的角标、星标按钮，
+   留着 transform 就会错位（这个坑项目里踩过）。
+   所以由 JS 在 animationend 时把 .pending-in/.in-view 两个类一起摘掉，
+   元素回到自然状态（opacity 1、无 transform），比依赖 fill-mode 干净得多。
+   动画被拦截（reduced-motion / 后台标签页）时另有 setTimeout 兜底。 */
+
+@media (prefers-reduced-motion: reduce) {
+  /* 关掉动效时，聚光仍然保留（它是静态明暗差异，不是运动），
+     但过渡要瞬时，滚入动画直接不生效。 */
+  #resultList .result-item::before,
+  .result-item.pending-in.in-view {
+    animation: none;
+    opacity: 1;
+    transition: none;
+  }
+  .result-item.pending-in {
+    opacity: 1;
+  }
+}

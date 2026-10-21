@@ -19,8 +19,8 @@
 
    ⚠️ 已知陷阱（同 transform 困住 fixed 的同类病）
      backdrop-filter 会创建包含块，把后代 position:fixed 困在这一层。
-     所以：玻璃规则只作用在「内容卡片」上，绝不允许作用在含有 fixed 浮层
-     的布局容器上。抽屉/弹窗一律挂在 <body> 直接子级。
+     本项目全站已不再使用 backdrop-filter（改为雾面实色），这个坑暂时不会再踩；
+     但 **transform 有完全相同的效果**，所以抽屉/弹窗依然一律挂在 <body> 直接子级。
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -37,10 +37,15 @@
 :root {
   /* filter 整条由 JS 拼好再写进来，CSS 只负责消费。
      这样"模糊为 0 时不要 blur() 这一环"这件事只需要在一个地方判断。 */
-  --wp-filter: saturate(0.9) brightness(1.03);
+  --wp-filter: saturate(1.04) contrast(1.03) brightness(1.02);
   --wp-scale: 1;
-  --wp-dur: 880ms;
+  --wp-dur: 520ms;
   --wp-scrim-op: 1;
+  /* 鼠标视差位移（由 wallpaper.js 的 initParallax 写入）。
+     这里必须显式给默认值：静态审查要求"用到的变量必须有定义"，
+     只写在 var() 的 fallback 里不算定义。 */
+  --wp-px: 0px;
+  --wp-py: 0px;
 }
 
 html[data-wall-tone="light"] {
@@ -165,7 +170,11 @@ html[data-wall="on"] body {
      高饱和图（花枝、红叶、卡通）压到 0.5~0.75，暗图再压低明度。
      一张图一个调子，才不会出现「这张干净、那张刺眼」。 */
   filter: var(--wp-filter, saturate(0.9));
-  transform: scale(var(--wp-scale, 1));
+  /* 视差：鼠标移动时整层做几像素位移（--wp-px/--wp-py 由 JS 缓动写入）。
+     ① 只用 transform，走合成器，不触发重排重绘；
+     ② 幅度刻意压到 12px 以内 —— 再大就成了"晃"，而不是"有纵深"；
+     ③ 因为作用在整层上，配合 scale 一起用不会露边。 */
+  transform: scale(var(--wp-scale, 1)) translate3d(var(--wp-px, 0px), var(--wp-py, 0px), 0);
   /* 只过渡 opacity。
      filter / transform 绝不做过渡：这两个值由 tone 决定，跨 tone 切换时若给它们
      加 transition，就等于让浏览器对一张全屏大图连续 400~500ms 每帧重跑 blur+saturate，
@@ -189,7 +198,7 @@ html[data-wall="on"] body {
 .wall-scrim {
   position: absolute;
   inset: 0;
-  background: var(--wp-scrim, rgba(6, 7, 10, 0.4));
+  background: var(--wp-scrim, rgba(6, 7, 10, 0.24));
   opacity: var(--wp-scrim-op, 1);
   transition: background-color 0.72s ease, opacity 0.4s ease;
 }
@@ -209,7 +218,7 @@ html[data-wall="on"] body {
 .wall-grain {
   position: absolute;
   inset: 0;
-  opacity: 0.14;
+  opacity: 0.05;
   mix-blend-mode: overlay;
   transition: opacity 0.2s linear;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
@@ -228,40 +237,26 @@ html[data-wall="on"] .atmosphere .aura {
    -------------------------------------------------------------------------- */
 
 .wall-glass {
-  background: color-mix(in srgb, var(--bg-elevated) 66%, transparent);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  background: color-mix(in srgb, var(--bg-elevated) 93%, transparent);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .wall-glass {
-    background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
-  }
 }
 
 /* 顶栏的两颗小胶囊 */
 html[data-wall="on"] .status-pill,
 html[data-wall="on"] .kbd-hint {
-  background: color-mix(in srgb, var(--bg-elevated) 62%, transparent);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
   border-color: var(--border);
 }
 
 /* 热词条与今日探索 */
 html[data-wall="on"] .publisher-shortcut__link {
-  background: color-mix(in srgb, var(--bg-elevated) 58%, transparent);
-  backdrop-filter: blur(16px) saturate(150%);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
   border: 1px solid var(--border);
 }
 
 html[data-wall="on"] .explore-chip {
-  background: color-mix(in srgb, var(--bg-elevated) 56%, transparent);
-  backdrop-filter: blur(16px) saturate(150%);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
   border: 1px solid var(--border);
 }
 
@@ -316,14 +311,11 @@ html[data-wall="on"] .result-item.keyboard-focus {
   background: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
 }
 
-/* 顶栏：走实色半透明而不是毛玻璃 —— header 内部若有 fixed 浮层，
-   backdrop-filter 会把它们困住（同 transform 的坑），用实色无此风险。
-   ⚠️ 但光给 .results-header 上色会踩另一个坑：它有 max-width:862px + margin:auto，
+/* 顶栏：实色半透明，不用毛玻璃（全站已去 backdrop-filter）。
+   ⚠️ 光给 .results-header 上色会踩一个坑：它有 max-width:862px + margin:auto，
    于是页面正中浮出一个**硬边矩形**，左右两边还露着壁纸。暗壁纸下不明显，
    一换到亮壁纸（檐外花枝那种）就是一块贴上去的白板。
-   所以颜色画在一条撑满 100vw 的 ::before 上，header 自己保持透明。
-   ::before 没有后代，因此这里用 backdrop-filter 不会困住任何 fixed 元素
-   （只是把壁纸虚化掉，做出真正的"顶栏"质感）。 */
+   所以颜色画在一条撑满 100vw 的 ::before 上，header 自己保持透明。 */
 html[data-wall="on"] .results-header {
   background: transparent;
   border-bottom: 0;
@@ -339,9 +331,7 @@ html[data-wall="on"] .results-header::before {
   transform: translateX(-50%);
   z-index: -1;
   pointer-events: none;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  background: color-mix(in srgb, var(--bg) 93%, transparent);
   border-bottom: 1px solid var(--border);
 }
 
@@ -404,9 +394,7 @@ html[data-wall="on"] .tool-btn:hover:not(:disabled) {
   gap: 0;
   padding: 5px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
-  backdrop-filter: blur(22px) saturate(170%);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-md);
   transition: box-shadow 0.3s ease, background-color 0.3s ease;
@@ -562,9 +550,7 @@ html[data-wall="on"] .tool-btn:hover:not(:disabled) {
   position: fixed;
   inset: 0;
   z-index: 1040;
-  background: rgba(6, 7, 10, 0.34);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  background: rgba(6, 7, 10, 0.46);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.32s ease;
@@ -584,9 +570,7 @@ html[data-wall="on"] .tool-btn:hover:not(:disabled) {
   width: min(92vw, 348px);
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(30px) saturate(170%);
-  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
   border-left: 1px solid var(--border);
   box-shadow: -18px 0 48px -18px rgba(0, 0, 0, 0.4);
   transform: translateX(100%);
@@ -903,40 +887,19 @@ html[data-wall="on"] .site-footer {
 /* --------------------------------------------------------------------------
    六、切换期间的运行时降级（html[data-wall-fading]）
    --------------------------------------------------------------------------
-   这一整段只在「壁纸正在交叉淡入」的那 880ms 里生效，由 wallpaper.js 的
+   这一整段只在「壁纸正在交叉淡入」的那几百毫秒里生效，由 wallpaper.js 的
    beginFade()/endFade() 开关，平时完全不存在。
 
-   为什么需要它：交叉淡入会让「背景」本身每帧都在变。凡是挂了 backdrop-filter
-   的元素，浏览器都必须按它自己的面积重新采样一遍背景再模糊。页面上有 23 个
-   这样的元素，其中十几个是小胶囊，真正吃面积的是顶栏、搜索框、底部胶囊和抽屉。
-   背景一动，这些全都要重算 —— 这就是切换时掉帧的主因。
-
-   降级做法：切图期间把它们退回成普通半透明底。
-   视觉代价可以接受，因为：① 这 880ms 里整屏画面本来就在过渡，没人会去比对
-   玻璃厚度；② 元素底色只差几个百分点的不透明度，不是跳成实色；
-   ③ 淡入一结束立刻恢复模糊，用户看到的稳定态和优化前完全一致。
+   ⚠️ 2026-10-21 变更：全站 backdrop-filter 已按要求移除，改为雾面实色。
+   所以原先"切图期间把玻璃退回半透明底"那一段**已经没有作用对象**，删掉。
+   下面只剩噪点层降级 —— 它依然必要：mix-blend-mode: overlay 会要求合成器
+   先回读底图再混合，底图在动的每一帧都要重算，这是切图卡顿的残余来源之一。
    -------------------------------------------------------------------------- */
-
-html[data-wall-fading] .kbd-hint,
-html[data-wall-fading] .status-pill,
-html[data-wall-fading] .chat-editor-content,
-html[data-wall-fading] .publisher-shortcut__link,
-html[data-wall-fading] .explore-chip,
-html[data-wall-fading] .wall-glass,
-html[data-wall-fading] .wall-dock,
-html[data-wall-fading] .wall-drawer,
-html[data-wall-fading] .wall-drawer-scrim,
-html[data-wall-fading] .results-header::before,
-html[data-wall-fading] .plugin-scroll-arrow,
-html[data-wall-fading] .cmdk-overlay {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
 
 /* 噪点层用的是 mix-blend-mode: overlay。混合模式要求合成器先回读底图再混合，
    底图在动的时候这一层同样每帧重算。切图期间把它淡到 0（不改混合模式，
    否则会露出半透明的灰膜），淡完再淡回来。
-   0.14 的细噪点在 200ms 里进出，肉眼基本无从察觉。 */
+   注：噪点本身已经压到 0.05，这一层现在只是保险。 */
 html[data-wall-fading] .wall-grain {
   opacity: 0;
 }

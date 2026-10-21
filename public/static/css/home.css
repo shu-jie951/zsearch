@@ -168,7 +168,7 @@ body.home-body {
 /* --- 主区 ---------------------------------------------------------------- */
 .home-main {
   width: 100%;
-  max-width: 800px;
+  max-width: 864px;
   margin: 0 auto;
   padding: 0 16px;
   display: flex;
@@ -269,9 +269,9 @@ body.home-body {
      在这里显式给默认值，静态审查才认它是"已定义"（fallback 不算）。 */
   --fx: 50%;
   --fy: 50%;
-  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  /* 雾面实色：去掉 backdrop-filter 后靠实度保证文字可读。
+     94% 是实测临界值 —— 再低，浅色壁纸上的正文边缘就开始发灰。 */
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
@@ -452,7 +452,7 @@ body.home-body {
 }
 
 .chat-input {
-  padding: 20px 20px 14px 22px;
+  padding: 26px 24px 18px 28px;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -461,18 +461,18 @@ body.home-body {
 .chat-input-wrapper {
   position: relative;
   width: 100%;
-  min-height: 76px;
+  min-height: 104px;
 }
 
 .chat-input-ghost {
   position: absolute;
   inset: 0;
   width: 100%;
-  min-height: 76px;
+  min-height: 104px;
   padding: 2px 0 0 0;
   margin: 0;
-  font-size: 18px;
-  line-height: 30px;
+  font-size: 21px;
+  line-height: 34px;
   font-family: inherit;
   letter-spacing: inherit;
   word-break: break-word;
@@ -484,46 +484,29 @@ body.home-body {
   z-index: 3;
 }
 
-.ghost-prefix {
-  visibility: hidden;
-  color: transparent;
-}
-
+/* 提示层里只保留文本。假光标与 ghost-prefix 占位都已删除：
+   前者和 textarea 的真光标重叠（"两个光标压在一起"），
+   后者是早期为了对齐后缀位置留的，现在不画光标就不需要占位了。 */
 .ghost-suffix {
   color: var(--text-faint);
   pointer-events: auto;
   cursor: pointer;
 }
 
-.ghost-caret {
-  display: inline-block;
-  width: 1px;
-  height: 19px;
-  margin-left: 1px;
-  vertical-align: -4px;
-  background: var(--text-muted);
-  animation: caret-blink 1.05s steps(1) infinite;
-}
-
-@keyframes caret-blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
-
 .chat-input-editor {
   position: relative;
   z-index: 4;
   width: 100%;
-  min-height: 76px;
-  max-height: 220px;
+  min-height: 104px;
+  max-height: 300px;
   padding: 2px 0 0 0;
   margin: 0;
   border: none;
   outline: none;
   resize: none;
   background: transparent;
-  font-size: 18px;
-  line-height: 30px;
+  font-size: 21px;
+  line-height: 34px;
   color: var(--text);
   caret-color: var(--accent);
   overflow-y: auto;
@@ -539,7 +522,7 @@ body.home-body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 10px;
+  margin-top: 14px;
   gap: 8px;
 }
 
@@ -797,12 +780,10 @@ body.home-body {
   user-select: none;
   outline: none;
   padding: 0;
-  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
   border: 1px solid var(--border);
   color: var(--text-muted);
   box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 
 .plugin-scroll-arrow.visible {
@@ -945,9 +926,7 @@ body.home-body {
   padding: 0 13px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
   color: var(--text-muted);
   font-size: 12.5px;
   cursor: pointer;
@@ -988,9 +967,9 @@ body.home-body {
   align-items: flex-start;
   justify-content: center;
   padding: 14vh 16px 16px;
-  background: color-mix(in srgb, var(--bg) 45%, rgba(0, 0, 0, 0.28));
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  /* 遮罩失去模糊补偿后要加深，否则弹出面板和背景糊在一起，
+     用户分不清「这一层」和「下面那层」。 */
+  background: color-mix(in srgb, var(--bg) 58%, rgba(0, 0, 0, 0.38));
   animation: overlay-in var(--dur-base) var(--ease-out);
 }
 
@@ -1112,18 +1091,18 @@ body.home-body {
     margin-bottom: 26px;
   }
   .chat-input {
-    padding: 14px 14px 10px 16px;
+    padding: 18px 16px 14px 18px;
   }
   /* 小屏上搜索框不再追高度，但字号不能缩回 16 —— iOS 上小于 16px 会自动放大页面 */
   .chat-input-wrapper,
   .chat-input-ghost,
   .chat-input-editor {
-    min-height: 62px;
+    min-height: 82px;
   }
   .chat-input-editor,
   .chat-input-ghost {
-    font-size: 17px;
-    line-height: 26px;
+    font-size: 18px;
+    line-height: 30px;
   }
   /* 意图胶囊在窄屏会挤掉右侧按钮，直接不显示（按钮比提示重要） */
   .editor-intent {

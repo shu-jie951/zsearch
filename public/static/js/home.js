@@ -59,7 +59,8 @@
   /* ---------------------------------------------------------------------
      2. 自动增高 + 提交按钮激活
      --------------------------------------------------------------------- */
-  const MAX_H = 220;
+  // 与 home.css 的 .chat-input-editor{max-height:300px} 保持同步，两处必须一起改
+  const MAX_H = 300;
 
   function autoGrow() {
     textarea.style.height = 'auto';
@@ -77,6 +78,8 @@
     autoGrow();
     syncSubmitState();
     syncSmartUI(this.value);
+    // 必须先清提示层再画别的：有内容时提示层要立刻消失，否则会和真实输入叠字
+    renderGhost();
     if (brainEnabled) scheduleSuggest(this.value);
     else hideSuggest();
     positionGhost();
@@ -263,26 +266,39 @@
   let ghostText = '';
   let typing = false;
 
+  /**
+   * 输入框为空时的「示例提示」层。
+   *
+   * ⚠️ 这里修的是一个真实的叠字 bug（原来只在 focus/blur 时重绘）：
+   *    input 事件没有调用本函数 —— 用户一敲字，提示文本不会被清掉，
+   *    于是「已输入的文字」和「示例提示」两层同时可见，看着就是字叠字。
+   *
+   * 另外两点也一并去掉：
+   *   1. 不再画假光标 .ghost-caret。textarea 自己有 caret-color 的真光标，
+   *      两者位置只要有 1px 差就会看成"两个光标压在一起"。
+   *   2. 不再每 55ms 重建 innerHTML。只更新已有文本节点的 textContent，
+   *      打字机动画期间不会反复触发布局。
+   */
   function renderGhost() {
     if (!ghostOverlay) return;
     const focused = document.activeElement === textarea;
-    if (textarea.value || typing || !focused) {
-      // 保留 caret，仅在真正不可见时清空
+    // 有内容 / 没聚焦 → 立刻清空（不是"保留 caret"，什么都不留）
+    if (!focused || textarea.value) {
       if (ghostOverlay.dataset.mode !== 'idle') {
         ghostOverlay.textContent = '';
         ghostOverlay.dataset.mode = 'idle';
       }
       return;
     }
-    ghostOverlay.dataset.mode = 'typing';
-    ghostOverlay.innerHTML = '';
-    const suffix = document.createElement('span');
-    suffix.className = 'ghost-suffix';
-    suffix.textContent = ghostText;
-    const caret = document.createElement('span');
-    caret.className = 'ghost-caret';
-    ghostOverlay.appendChild(suffix);
-    ghostOverlay.appendChild(caret);
+    let suffix = ghostOverlay.querySelector('.ghost-suffix');
+    if (!suffix) {
+      ghostOverlay.textContent = '';
+      suffix = document.createElement('span');
+      suffix.className = 'ghost-suffix';
+      ghostOverlay.appendChild(suffix);
+      ghostOverlay.dataset.mode = 'typing';
+    }
+    if (suffix.textContent !== ghostText) suffix.textContent = ghostText;
   }
 
   textarea.addEventListener('focus', renderGhost);
