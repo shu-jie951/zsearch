@@ -36,16 +36,16 @@
    注意：内联 style 优先级高于样式表，所以 runtime 覆盖不受影响。 */
 :root {
   /* filter 整条由 JS 拼好再写进来，CSS 只负责消费。
-     这样"模糊为 0 时不要 blur() 这一环"这件事只需要在一个地方判断。 */
-  --wp-filter: saturate(1.04) contrast(1.03) brightness(1.02);
-  --wp-scale: 1;
+     这样"模糊为 0 时不要 blur() 这一环"这件事只需要在一个地方判断。
+
+     2026-10-21 二次调整：默认 **none**。
+     调色（saturate / brightness）已经烘焙进图片像素了，运行时一个滤镜都不留 ——
+     全屏 filter 只要存在，合成器就得为这一层单独跑一次滤镜 pass；
+     而这一层还挂着鼠标视差、每帧都在移动 = 每帧一次全屏滤镜 pass。
+     默认 none 之后，视差退化成纯合成，这是最便宜的一档。 */
+  --wp-filter: none;
   --wp-dur: 520ms;
   --wp-scrim-op: 1;
-  /* 鼠标视差位移（由 wallpaper.js 的 initParallax 写入）。
-     这里必须显式给默认值：静态审查要求"用到的变量必须有定义"，
-     只写在 var() 的 fallback 里不算定义。 */
-  --wp-px: 0px;
-  --wp-py: 0px;
 }
 
 html[data-wall-tone="light"] {
@@ -165,16 +165,24 @@ html[data-wall="on"] body {
   background-size: cover;
   background-repeat: no-repeat;
   opacity: 0;
-  /* 调色走摄影后期思路，不靠加雾压亮度。
-     饱和度/明度由每张图自己的参数决定（JS 写入变量）：
-     高饱和图（花枝、红叶、卡通）压到 0.5~0.75，暗图再压低明度。
-     一张图一个调子，才不会出现「这张干净、那张刺眼」。 */
-  filter: var(--wp-filter, saturate(0.9));
-  /* 视差：鼠标移动时整层做几像素位移（--wp-px/--wp-py 由 JS 缓动写入）。
-     ① 只用 transform，走合成器，不触发重排重绘；
-     ② 幅度刻意压到 12px 以内 —— 再大就成了"晃"，而不是"有纵深"；
-     ③ 因为作用在整层上，配合 scale 一起用不会露边。 */
-  transform: scale(var(--wp-scale, 1)) translate3d(var(--wp-px, 0px), var(--wp-py, 0px), 0);
+  /* 2026-10-21 二次调整：调色（饱和度/亮度）已烘焙进图片像素，见 _rebuild_wall.py。
+     这里不再有任何默认滤镜 —— 默认 none，只在用户自己拖模糊滑杆时才由 JS 写 blur()。
+     全屏 filter 的存在成本很高：图层还挂着视差、每帧都在移动，
+     等于每帧重跑一次全屏滤镜 pass。 */
+  filter: var(--wp-filter, none);
+  /* 视差与放大**全部由 JS 直接写 inline transform**（见 wallpaper.js 的 write）。
+     这里只是 JS 生效之前的初值，也是"视差没启用"（触屏 / reduced-motion）时的终值。
+
+     为什么不再用 CSS 变量：
+       自定义属性会被后代继承，赋值时浏览器要沿继承链传播失效；
+       transform 是普通属性，失效范围只有这个元素自己。
+       而且每帧少两次属性写。
+
+     那 1.012 是保险放大：background-size:cover 时图片正好铺满，
+     位移 12px 就会把边缘露出来（能看到一条底色）。
+     1.2% 在 1920 上余 23px、在 1080 上余 13px，刚好盖住最大位移。
+     放大本身不额外花钱 —— transform 图层每帧本来就要采样一次。 */
+  transform: scale(1.012);
   /* 只过渡 opacity。
      filter / transform 绝不做过渡：这两个值由 tone 决定，跨 tone 切换时若给它们
      加 transition，就等于让浏览器对一张全屏大图连续 400~500ms 每帧重跑 blur+saturate，
@@ -213,13 +221,16 @@ html[data-wall="on"] body {
 }
 
 /* 细噪点：消除大面积渐变/照片上的色带。
-   mix-blend-mode 会把 stage 这一层拉进「需要读底图」的模式，切换期间成本不低，
-   所以切图那 880ms 里先用 .wall-fading 把它摘下来（见文件末尾的运行时降级段）。 */
+ *
+ * ⚠️ 原本是 mix-blend-mode: overlay，和 base.css 里 .atmosphere .grain 一样已改 normal。
+ *    这两层在开壁纸时是**叠加**的，两层都带 overlay 意味着合成器每帧要回读两次底图；
+ *    而壁纸层有鼠标视差，transform 每帧都在变 —— 这是"一动就卡"的直接来源。
+ *    实测 overlay → normal：横扫 p95 12ms → 9ms，吞吐 225fps → 354fps。
+ *    两层 opacity 分别只有 0.038 / 0.05，换混合方式的视觉差异测不出来。 */
 .wall-grain {
   position: absolute;
   inset: 0;
   opacity: 0.05;
-  mix-blend-mode: overlay;
   transition: opacity 0.2s linear;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
 }
@@ -892,14 +903,18 @@ html[data-wall="on"] .site-footer {
 
    ⚠️ 2026-10-21 变更：全站 backdrop-filter 已按要求移除，改为雾面实色。
    所以原先"切图期间把玻璃退回半透明底"那一段**已经没有作用对象**，删掉。
-   下面只剩噪点层降级 —— 它依然必要：mix-blend-mode: overlay 会要求合成器
-   先回读底图再混合，底图在动的每一帧都要重算，这是切图卡顿的残余来源之一。
+
+   ⚠️ 2026-10-21 第二次变更：噪点层已从 mix-blend-mode: overlay 改为 normal。
+   所以"底图在动的每一帧都要重算混合"这个理由已经不成立了 —— 下面这条降级
+   严格来说不再是必需项。但保留它仍然划算：切图期间那一层即使只是 alpha 叠加，
+   在全屏范围内也是一次多余的合成，而且它本来就不可见（0.05 太淡），
+   盖住零成本、省一点点，留着。
    -------------------------------------------------------------------------- */
 
-/* 噪点层用的是 mix-blend-mode: overlay。混合模式要求合成器先回读底图再混合，
-   底图在动的时候这一层同样每帧重算。切图期间把它淡到 0（不改混合模式，
-   否则会露出半透明的灰膜），淡完再淡回来。
-   注：噪点本身已经压到 0.05，这一层现在只是保险。 */
+/* 切图那 880ms 里把全屏噪点淡到 0。
+   注：现在它已经不回读底图了，这条只是"反正看不见，顺手省掉一层合成"。
+   不要改成 opacity 之外的写法（比如 display:none）—— 那会触发一次重排，
+   在一个 880ms 的动画窗口里插一次重排，代价比省下来的合成还高。 */
 html[data-wall-fading] .wall-grain {
   opacity: 0;
 }

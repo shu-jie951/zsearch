@@ -112,8 +112,12 @@
 
     function flush() {
       raf = 0;
-      editorContent.style.setProperty('--fx', px + 'px');
-      editorContent.style.setProperty('--fy', py + 'px');
+      // ⚠️ 写到 aura 自己身上，不要写到 editorContent。
+      // 自定义属性会向后代继承：写到 editorContent 就是让整棵输入区子树
+      // （textarea、提示层、按钮、图标…）每次鼠标移动都重算一次样式。
+      // aura 是个空的装饰 div，写它自己，失效范围只有它一个。
+      aura.style.setProperty('--fx', px + 'px');
+      aura.style.setProperty('--fy', py + 'px');
     }
 
     function invalidate() {
@@ -242,6 +246,9 @@
     hideSuggest();
     if (brainEnabled) scheduleSuggest('');
     if (keepFocus !== false) textarea.focus();
+    // 清空后必须重绘提示层：此时「空 + 聚焦」又满足显示条件，
+    // 不重绘的话提示层会一直空着（看起来像提示功能坏了）。
+    renderGhost();
   }
 
   if (clearBtn) {
@@ -287,6 +294,8 @@
       if (ghostOverlay.dataset.mode !== 'idle') {
         ghostOverlay.textContent = '';
         ghostOverlay.dataset.mode = 'idle';
+        // 提示层空了，把原生 placeholder 还回去
+        textarea.classList.remove('has-ghost');
       }
       return;
     }
@@ -299,6 +308,11 @@
       ghostOverlay.dataset.mode = 'typing';
     }
     if (suffix.textContent !== ghostText) suffix.textContent = ghostText;
+    // ⚠️ 提示层有内容时，必须把 textarea 的原生 placeholder 关掉。
+    // 两者渲染在同一个位置，同时可见就是用户说的"字体重映"。
+    // 这里用类名而不是 :focus —— blur 之后提示层还要延迟 120ms 才清空，
+    // 那段窗口里 :focus 已经失效、placeholder 已经恢复，两者会短暂重叠。
+    textarea.classList.add('has-ghost');
   }
 
   textarea.addEventListener('focus', renderGhost);
@@ -337,6 +351,9 @@
     syncSmartUI(w);
     hideSuggest();
     textarea.focus();
+    // 点击提示文本补全后，提示层必须立刻消失。
+    // 漏这一步会让「已填入的内容」和「示例提示」叠在同一行 —— 又一个叠字入口。
+    renderGhost();
   }
 
   if (ghostOverlay) {

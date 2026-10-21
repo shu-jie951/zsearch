@@ -665,10 +665,48 @@
      --------------------------------------------------------------------- */
   function showSkeleton() {
     resultList.innerHTML =
+      // 等待计时条：从第 0 秒就告诉用户"系统在工作"。
+      // 为什么需要它：阶段 1 的服务端硬上限是 6.5 秒，上游慢的时候用户要盯着
+      // 一块**完全静止**的骨架屏等 6.5 秒，主观上就是"点了没反应/卡死了"。
+      // 有了秒数在跳，等待变成"可感知的进行中"，这是纯粹的观感修复，不发任何额外请求。
+      '<div class="wait-hint" role="status">正在连接数据源…</div>' +
       '<div class="result-loading" aria-hidden="true"><div class="loading-line title" style="width:70%"></div><div class="loading-line snippet"></div><div class="loading-line tags"></div></div>' +
       '<div class="result-loading" aria-hidden="true"><div class="loading-line title" style="width:55%"></div><div class="loading-line snippet" style="width:85%"></div><div class="loading-line tags" style="width:25%"></div></div>' +
       '<div class="result-loading" aria-hidden="true"><div class="loading-line title" style="width:80%"></div><div class="loading-line snippet" style="width:95%"></div><div class="loading-line tags" style="width:40%"></div></div>' +
       '<div class="result-loading" aria-hidden="true"><div class="loading-line title" style="width:60%"></div><div class="loading-line snippet"></div><div class="loading-line tags"></div></div>';
+    startWaitClock();
+  }
+
+  /* 等待计时器：跟着骨架屏一起生，跟着骨架屏一起死。
+     不需要在任何地方显式 stop —— 用 el.isConnected 判断元素是否还在文档里，
+     被 renderResults / renderEmpty 换掉之后下一拍就自己 clearInterval。
+     这样即使某条代码路径忘了收尾，也不会留下一个永久跑着的定时器。 */
+  let waitTimer = 0;
+
+  function startWaitClock() {
+    if (waitTimer) {
+      window.clearInterval(waitTimer);
+      waitTimer = 0;
+    }
+    const el = resultList.querySelector('.wait-hint');
+    if (!el) return;
+    const t0 = Date.now();
+    const tick = function () {
+      if (!el.isConnected) {
+        window.clearInterval(waitTimer);
+        waitTimer = 0;
+        return;
+      }
+      const sec = Math.round((Date.now() - t0) / 1000);
+      // 前 6 秒只是报数；超过 6 秒说明撞上慢源了，换一句能解释当前状况的话，
+      // 否则用户会以为是本站坏了而不是上游慢。
+      el.textContent =
+        sec < 6
+          ? '正在从多个数据源检索… ' + sec + ' 秒'
+          : '数据源响应偏慢，已用 ' + sec + ' 秒 · 慢源返回后会自动补齐';
+    };
+    tick();
+    waitTimer = window.setInterval(tick, 500);
   }
 
   let reqSeq = 0;

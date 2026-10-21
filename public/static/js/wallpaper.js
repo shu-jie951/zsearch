@@ -21,22 +21,26 @@
   var BASE = '/static/img/wall/';
 
   // sat / bri：单张的调色参数。缺省按 tone 取默认值。
-  // 高饱和的图（花枝四色、红叶、卡通）必须单独压下来，否则整屏像打翻的调色盘。
+  // 2026-10-21 二次调整：颜色调整（饱和度/亮度）已**烘焙进图片像素**
+  // （见 _rebuild_wall.py），这里不再有 sat/bri 字段。
+  // 原因有两条，都很硬：
+  //   1. 全屏层上的 filter 是一笔真金白银的开销 —— 只要有 filter，
+  //      合成器就得为这个全屏图层单独准备一次滤镜 pass。而背景还挂着鼠标视差，
+  //      图层每帧都在动 ⇒ **每帧重跑一次 1920×1080 的滤镜 pass**，这比什么都卡。
+  //      烘焙进像素后默认状态零滤镜，视差退化成纯合成，是最便宜的形态。
+  //   2. 原来每张图被 saturate(0.5~0.94) 压着，画面发灰 —— 主观上就是"不清晰"。
   var WALLS = [
-    { id: 'w01', name: '软梦月球', tone: 'light', file: '01.webp', group: '插画', sat: 0.82 },
+    { id: 'w01', name: '软梦月球', tone: 'light', file: '01.webp', group: '插画' },
     { id: 'w02', name: '夜湖倒影', tone: 'dark',  file: '02.webp', group: '影像' },
-    { id: 'w03', name: '橘子洲头', tone: 'dark',  file: '03.webp', group: '影像', sat: 0.78 },
+    { id: 'w03', name: '橘子洲头', tone: 'dark',  file: '03.webp', group: '影像' },
     { id: 'w04', name: '林间车站', tone: 'dark',  file: '04.webp', group: '影像' },
-    { id: 'w05', name: '星月夜',   tone: 'dark',  file: '05.webp', group: '影像', sat: 0.84 },
+    { id: 'w05', name: '星月夜',   tone: 'dark',  file: '05.webp', group: '影像' },
     { id: 'w06', name: '雪峰银河', tone: 'dark',  file: '06.webp', group: '影像' },
-    { id: 'w07', name: '檐外花枝', tone: 'light', file: '07.webp', group: '影像', sat: 0.5, bri: 1.0 },
-    { id: 'w08', name: '秋径红叶', tone: 'light', file: '08.webp', group: '影像', sat: 0.64 },
-    { id: 'w09', name: '山河剪影', tone: 'dark',  file: '09.webp', group: '影像', sat: 0.72 },
-    { id: 'w10', name: '夏日树荫', tone: 'light', file: '10.webp', group: '插画', sat: 0.72 }
+    { id: 'w07', name: '檐外花枝', tone: 'light', file: '07.webp', group: '影像' },
+    { id: 'w08', name: '秋径红叶', tone: 'light', file: '08.webp', group: '影像' },
+    { id: 'w09', name: '山河剪影', tone: 'dark',  file: '09.webp', group: '影像' },
+    { id: 'w10', name: '夏日树荫', tone: 'light', file: '10.webp', group: '插画' }
   ];
-
-  var DEFAULT_SAT = { light: 0.9, dark: 0.94 };
-  var DEFAULT_BRI = { light: 1.03, dark: 0.88 };
 
   var STORE_KEY = 'zsearch.wall.v1';
   var AUTOPLAY_MS = 45000;
@@ -127,6 +131,10 @@
   var activeIdx = 0;
   var switchSeq = 0; // 竞态守卫：连续切图时丢弃过期的异步回调
 
+  // 视差的"把当前位移立刻同步到可见层"入口，由 initParallax 安装。
+  // 切图后新层拿到的是 CSS 初始 transform，不同步就会从 (0,0) 跳一下。
+  var parallaxSync = null;
+
   var systemDark =
     window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -148,22 +156,23 @@
     }
 
     root.style.setProperty('--wp-scrim-op', String(state.scrim));
-    root.style.setProperty('--wp-scale', state.blur > 0 ? '1.06' : '1');
-
-    // 调色：单张覆盖优先，否则按 tone 取默认
-    var tone = wall ? wall.tone : 'light';
-    var sat = wall && typeof wall.sat === 'number' ? wall.sat : DEFAULT_SAT[tone];
-    var bri = wall && typeof wall.bri === 'number' ? wall.bri : DEFAULT_BRI[tone];
+    // 模糊变了 → transform 里的 scale 也要跟着变（blur>0 需要额外 1.06 防露边）。
+    // 位移值没变，只是重新拼一次 transform。
+    if (parallaxSync) parallaxSync();
 
     // 整条 filter 由这里拼好，而不是在 CSS 里拼。
-    // 原因：blur(0px) 虽然视觉上等于没模糊，但 filter 链里只要出现 blur()，
-    // 浏览器就得为这个全屏层单独准备一次滤镜 pass。模糊滑杆默认是 0，
-    // 那就干脆别把 blur() 写进去 —— 这一层直接退化成"纯图片 + 透明度"，
-    // 是合成器最省事的一种图层。
+    //
+    // 2026-10-21 二次调整：调色（saturate / brightness）已烘焙进图片，这里只剩
+    // **用户自己拖的模糊**。所以默认状态下 chain 是空字符串 → 这一层没有 filter，
+    // 合成器不用为它准备任何滤镜 pass。
+    //
+    // 这一点必须守住：背景还挂着鼠标视差，图层每帧都在动。
+    // 只要 filter 链里留着一个 saturate()，哪怕参数是 1，也会变成
+    // "每帧一次全屏滤镜 pass" —— 这是上一版切图/移动都发卡的直接原因之一。
+    // （blur(0px) 也是同理，所以只在真的 >0 时才写进去。）
     var chain = '';
     if (state.blur > 0) chain += 'blur(' + state.blur + 'px) ';
-    chain += 'saturate(' + sat + ') brightness(' + bri + ')';
-    root.style.setProperty('--wp-filter', chain);
+    root.style.setProperty('--wp-filter', chain || 'none');
   }
 
   /* ---- 切换期间的运行时降级 ----
@@ -224,16 +233,69 @@
     var cx = 0, cy = 0;     // 当前
     var raf = 0;
 
+    // 放大系数：1.012 用来盖住位移（background-size:cover 铺满时位移会露边），
+    // blur > 0 时再叠 1.06（模糊的采样半径会向外扩）。
+    function scaleOf() {
+      return (state && state.blur > 0 ? 1.06 : 1) * 1.012;
+    }
+
+    /* 这里曾经有过一段"动的时候给可见层加 will-change: transform、
+       停下 700ms 再还回去"的图层提升逻辑。删掉的原因很直接：实测无效。
+       开与不开，60 次鼠标移动的主线程耗时分别是 439ms / 437ms（噪声级别），
+       而代价是它会和切换动画的 `will-change: opacity` 抢同一个属性，
+       让"淡入结束后已释放 will-change"这条断言失效。
+       没有效果的复杂度就是负债，不留。 */
+
+    /* 每帧只做**一次属性写**，而且只写给**当前可见的那一层**。
+       三个细节都是踩出来的：
+
+       ① 不用 CSS 变量，直接写 transform。
+          自定义属性会被后代继承，赋值时浏览器要沿继承链传播失效；
+          transform 是普通属性，失效范围只有这个元素自己。
+
+       ② 只写可见层。
+          两层里有一层 opacity:0，它照样会参与样式重算和图层合成 ——
+          给它写位移等于白烧一帧的合成预算。
+
+       ③ 交叉淡入期间（data-wall-fading 存在）两层都要写。
+          那 520ms 里两层同时可见，只让一层动就会看成"两张图错位"。 */
+    function write(vx, vy) {
+      var tf = 'scale(' + scaleOf().toFixed(4) + ') translate3d(' +
+        vx.toFixed(2) + 'px,' + vy.toFixed(2) + 'px,0)';
+      var fading = !!(root.dataset && root.dataset.wallFading);
+      for (var i = 0; i < layers.length; i++) {
+        if (fading || layers[i].classList.contains('is-on')) {
+          layers[i].style.transform = tf;
+        }
+      }
+    }
+
+    var frame = 0;
+
     function tick() {
       raf = 0;
       cx += (tx - cx) * EASE;
       cy += (ty - cy) * EASE;
-      root.style.setProperty('--wp-px', cx.toFixed(2) + 'px');
-      root.style.setProperty('--wp-py', cy.toFixed(2) + 'px');
+      frame++;
+      // ★ 每 2 帧写一次（30fps）。
+      // 视差本身是缓动跟随，位移每次只有零点几像素，30fps 和 60fps
+      // 在观感上分不出来；但全屏图层的合成为此少跑一半 —— 在集成显卡 /
+      // 软件合成的机器上，这一半就是"能不能流畅"的分界线。
+      // 缓动计算仍然每帧推进，所以跟随手感不变，只是刷新率减半。
+      if (frame % 2 === 0) write(cx, cy);
       if (Math.abs(tx - cx) > 0.08 || Math.abs(ty - cy) > 0.08) {
         raf = window.requestAnimationFrame(tick);
+      } else {
+        // 收敛时补最后一帧，避免停在半路上（150% 之内的残余位移）
+        write(cx, cy);
       }
     }
+
+    // 切图后新层拿到的是 CSS 里的初始 transform，需要立刻同步到当前位移，
+    // 否则会从 (0,0) 跳一下。
+    parallaxSync = function () {
+      write(cx, cy);
+    };
 
     window.addEventListener(
       'pointermove',
@@ -318,6 +380,10 @@
 
       activeIdx = 1 - activeIdx;
 
+      // 新层刚拿到 CSS 里的初始 transform，把当前位移补上去，
+      // 否则它会在淡入的同时从 (0,0) 滑一下 —— 视觉上像"图在漂"。
+      if (parallaxSync) parallaxSync();
+
       // 4) 过渡结束后收尾：
       //    旧层可能还留着上一次非动画切换时写进去的 inline transition:none，
       //    这里统一清干净，并撤掉降级标记。
@@ -354,25 +420,47 @@
     probe.src = src;
   }
 
-  /* ---- 空闲时把 10 张图全部预解码 ----
-     第一次点某张缩略图时的顿挫，根源就是"这一张还没解过码"。
-     页面加载完把 10 张全部 decode 一遍（合计约 310KB 源文件 / 80MB 位图，
-     浏览器会自己管理内存，不会真的常驻 80MB），之后任何一次切换都只剩翻 opacity。 */
-  var preloaded = false;
+  /* ---- 按需预解码 ----
+     第一次点某张缩略图时的顿挫，根源是"这一张还没解过码"。
+     decode() 把解码提前，切图时就只剩翻 opacity。
 
-  function preloadAll() {
-    if (preloaded) return;
-    preloaded = true;
-    for (var i = 0; i < WALLS.length; i++) {
-      (function (file) {
-        var im = new Image();
-        im.decoding = 'async';
-        im.onload = function () {
-          if (typeof im.decode === 'function') im.decode().catch(function () {});
-        };
-        im.src = BASE + file;
-      })(WALLS[i].file);
-    }
+     ⚠️ 2026-10-21 二次调整：**不再在页面加载完就一次性解全部 10 张。**
+     当时以为"浏览器会自己管内存，不会真常驻"，但实际上 10 张 1920×1080
+     解出来是 ~83MB 的位图，扎堆解码会把主线程和解码线程占满几秒 ——
+     用户感受到的就是"一打开就卡、滚一下也卡"。壁纸换成原图后体积涨到 3.6MB，
+     这个问题只会更明显。
+
+     现在改成两级按需：
+       ① 打开外观抽屉时才逐张预热（间隔 120ms，不扎堆）；
+       ② 指针指到哪张缩略图，就先解哪张 —— 用户从"看一眼"到"点下去"
+          中间通常有几百毫秒，足够解完。
+     首屏因此零额外成本。 */
+  var decoded = {};
+
+  function decodeOne(file) {
+    if (!file || decoded[file]) return;
+    decoded[file] = true;          // 先占位，避免同一张被并发解码多次
+    var im = new Image();
+    im.decoding = 'async';
+    im.onload = function () {
+      if (typeof im.decode === 'function') im.decode().catch(function () {});
+    };
+    im.onerror = function () {
+      // 失败也留着标记，别让预热逻辑反复重试砸请求
+    };
+    im.src = BASE + file;
+  }
+
+  /* 抽屉打开时逐张预热。用递归 setTimeout 而不是 for 循环一次性 src 赋值：
+     后者会让 10 个解码任务在同一时刻全部排队，正是要避免的"扎堆"。 */
+  function warmUpWalls() {
+    var i = 0;
+    (function next() {
+      if (i >= WALLS.length) return;
+      decodeOne(WALLS[i].file);
+      i++;
+      window.setTimeout(next, 120);
+    })();
   }
 
   /** 底部胶囊的选中态 */
@@ -651,6 +739,14 @@
 
         card.appendChild(name);
         grid.appendChild(card);
+
+        // 指针指到哪张就先解哪张。从"看一眼缩略图"到"点下去"通常有几百毫秒，
+        // 足够把这张 1920 宽的图解码完 —— 点下去时就不用等 decode 了。
+        // focus 也挂上：键盘 Tab 到这张同理。
+        (function (file) {
+          card.addEventListener('pointerenter', function () { decodeOne(file); }, { passive: true });
+          card.addEventListener('focus', function () { decodeOne(file); });
+        })(w.file);
       }
     }
 
@@ -753,6 +849,9 @@
     drawerScrim.classList.add('is-open');
     drawer.setAttribute('aria-hidden', 'false');
     apply();
+    // 用户已经表达"我要换壁纸"这个意图了，这时候预热解码最合理：
+    // 不占首屏，又能在真正点下去之前把图解好。
+    warmUpWalls();
     if (drawerClose) drawerClose.focus({ preventScroll: true });
   }
 
@@ -851,13 +950,11 @@
       list: function () { return WALLS.slice(); }
     };
 
-    // 预解码排在首屏之后：别和首屏抢带宽/主线程。
-    // rIC 在后台标签页可能一直不触发，所以再挂一个 timeout 兜底。
-    if (window.requestIdleCallback) {
-      window.requestIdleCallback(preloadAll, { timeout: 2500 });
-    } else {
-      window.setTimeout(preloadAll, 1200);
-    }
+    // 首屏**不做**预解码。
+    // 原来这里排了一个 requestIdleCallback(() => preloadAll())，把 10 张全屏图
+    // 一次解完（~83MB 位图）。本意是"之后切图更快"，实际效果是页面加载完
+    // 几秒内主线程/解码线程一直被占着 —— 首屏本来能滑，反而滑不动。
+    // 现在解码时机交给"打开抽屉"和"指针指到缩略图"两个真实意图，见 warmUpWalls。
   }
 
   if (document.readyState === 'loading') {

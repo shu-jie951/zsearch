@@ -587,6 +587,20 @@ body.results-body {
   display: block;
 }
 
+/* 搜索等待计时条（骨架屏顶部那一行）。
+   只做一件事：证明系统在动。上游慢的时候阶段 1 要等满 6.5 秒，
+   一块完全静止的骨架屏看起来就像"点了没反应"。
+   用 tabular-nums 是因为秒数每 500ms 变一次，非等宽数字会让这一行左右抖动。 */
+.wait-hint {
+  margin: 0 0 12px;
+  padding-left: 2px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
 /* --- 结果条目 ------------------------------------------------------------ */
 .result-item {
   margin-bottom: 6px;

@@ -170,6 +170,20 @@ const ok = (cond, label, extra) => {
           degraded: [], elapsedMs: 800, deduped: 0,
           suggest: ['考研'] } };
       }
+      // slow_probe：故意拖 2.6 秒才回，用来验证"等待计时条"。
+      // 真实场景里这个位置就是上游变慢、骨架屏要挂 6.5 秒的那段时间。
+      if (url.indexOf('slow_probe') !== -1) {
+        return new Promise(function (resolve) {
+          setTimeout(function () {
+            resolve(new Response(JSON.stringify({ ok: true, data: {
+              results: [], source: 'no-result', reason: 'all-sources-empty',
+              query: 'slow_probe', sort: 'latest', cloud: 'all',
+              providers: [{ id: 'pansou', count: 0, ms: 2600, ok: false, error: 'no-data' }],
+              degraded: [], elapsedMs: 2600, deduped: 0, suggest: [] } }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }));
+          }, 2600);
+        });
+      }
       if (!payload) return orig.apply(this, arguments);
       return Promise.resolve(new Response(JSON.stringify(payload), {
         status: 200, headers: { 'Content-Type': 'application/json' }
@@ -213,7 +227,25 @@ const ok = (cond, label, extra) => {
   ok(/没有找到/.test(t2), '真没结果时仍是「没有找到相关资源」', t2);
   ok(retry2 === 0, '真没结果时不给无意义的重试按钮', retry2);
 
-  // ---- 3c. 控制台 ----
+  // ---- 3c. 等待计时条 ----
+  // 骨架屏最长要挂 6.5 秒（阶段 1 的服务端硬上限）。一块完全静止的骨架屏
+  // 在用户眼里就是"点了没反应"，所以加了 .wait-hint：从第 0 秒就报数。
+  await send('Page.navigate', { url: 'http://127.0.0.1:' + PORT + '/search?q=slow_probe' }, sid);
+  const hintAppeared = await waitFor(`!!document.querySelector('.wait-hint')`, 4000, 100);
+  ok(hintAppeared, '等待期间出现计时条（骨架屏不是完全静止的）');
+  const hint1 = await evalJs(`(document.querySelector('.wait-hint')||{}).textContent||''`);
+  ok(/秒/.test(hint1), '计时条带秒数', hint1);
+
+  // 秒数必须真的在跳 —— 否则和静态文案没区别，还是"卡死感"
+  await sleep(1300);
+  const hint2 = await evalJs(`(document.querySelector('.wait-hint')||{}).textContent||''`);
+  ok(hint1 !== hint2 && /秒/.test(hint2), '秒数在实时跳动', { first: hint1, later: hint2 });
+
+  // 真实结果（这里是空态）到达后，计时条必须消失，不能留在页面上
+  const hintGone = await waitFor(`!document.querySelector('.wait-hint')`, 8000, 200);
+  ok(hintGone, '结果到达后计时条自动消失');
+
+  // ---- 3d. 控制台 ----
   await sleep(500);
   ok(errs.length === 0, '控制台零报错', errs.slice(0, 3));
 

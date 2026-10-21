@@ -24,8 +24,8 @@ const NODE = process.execPath;
 const CWD = __dirname;
 let pass = 0, fail = 0;
 const failures = [];
-function t(name, fn) {
-  try { fn(); pass++; console.log('  ✓ ' + name); }
+async function t(name, fn) {
+  try { await fn(); pass++; console.log('  ✓ ' + name); }
   catch (e) { fail++; failures.push({ name, msg: e.message }); console.log('  ✗ ' + name + '  →  ' + e.message); }
 }
 
@@ -106,29 +106,29 @@ async function findGoHash(port, query) {
     const goPath = item.target;
 
     const page = await req(PORT, { path: goPath });
-    t('/go 首次访问返回 200（风险页，而非直接 302）', () => {
+    await t('/go 首次访问返回 200（风险页，而非直接 302）', () => {
       assert.ok([200, 302].includes(page.status), '实际 ' + page.status);
     });
 
     if (page.status === 200) {
-      t('风险页 CSP 为内联页专用（允许 inline，禁外部源）', () => {
+      await t('风险页 CSP 为内联页专用（允许 inline，禁外部源）', () => {
         const csp = page.headers['content-security-policy'] || '';
         assert.ok(csp.includes("script-src 'self' 'unsafe-inline'"), csp);
         assert.ok(!/script-src[^;]*https?:/.test(csp), '不能允许外部脚本源');
       });
 
-      t('风险页展示了目标域名', () => {
+      await t('风险页展示了目标域名', () => {
         assert.ok(page.body.includes('即将前往') || page.body.includes('安全提示'), '缺少风险页标志');
       });
 
-      t('风险页不含真实网盘直链 token', () => {
+      await t('风险页不含真实网盘直链 token', () => {
         // 风险页只应展示域名，不应把完整 URL 写进 HTML
         const m = page.body.match(/https?:\/\/[^\s"'<>]{10,}/g) || [];
         const leaked = m.filter((u) => /pan\.quark\.cn\/s\/|pan\.baidu\.com\/s\/|drive\.uc\.cn\/s\//.test(u));
         assert.strictEqual(leaked.length, 0, '风险页泄露了完整直链：' + leaked.slice(0, 2).join(', '));
       });
 
-      t('带 confirm=1 才真正 302', () => {
+      await t('带 confirm=1 才真正 302', () => {
         // 这里只验证路由存在且不会 500；真实 302 依赖上游解析结果
         return req(PORT, { path: goPath + '?confirm=1' }).then((r2) => {
           assert.ok([200, 302, 400, 503].includes(r2.status), '意外状态 ' + r2.status);
@@ -143,12 +143,12 @@ async function findGoHash(port, query) {
 
   console.log('\nG3  白名单外域名拦截');
 
-  t('非法 hash 返回 400', async () => {
+  await t('非法 hash 返回 400', async () => {
     const r = await req(PORT, { path: '/go/ZZZZ!!' });
     assert.strictEqual(r.status, 400);
   });
 
-  t('不存在的 hash 返回 404 且提示可读', async () => {
+  await t('不存在的 hash 返回 404 且提示可读', async () => {
     const r = await req(PORT, { path: '/go/deadbeef' });
     assert.ok([404, 400].includes(r.status));
     if (r.status === 404) assert.ok(r.body.includes('链接已过期'), '应给出可读提示');
@@ -156,7 +156,7 @@ async function findGoHash(port, query) {
 
   console.log('\nG5  /go 页面 CSP');
 
-  t('/go 相关响应的 CSP 不含外部脚本源', async () => {
+  await t('/go 相关响应的 CSP 不含外部脚本源', async () => {
     const r = await req(PORT, { path: '/go/deadbeef' });
     const csp = r.headers['content-security-policy'] || '';
     assert.ok(!/script-src[^;]*https?:\/\//.test(csp), 'CSP 不应允许外部脚本源：' + csp);
@@ -164,17 +164,17 @@ async function findGoHash(port, query) {
 
   console.log('\nG6  /api/security/check');
 
-  t('bad hash → 400', async () => {
+  await t('bad hash → 400', async () => {
     const r = await req(PORT, { path: '/api/security/check?h=!!!' });
     assert.strictEqual(r.status, 400);
   });
 
-  t('未知 hash → 404', async () => {
+  await t('未知 hash → 404', async () => {
     const r = await req(PORT, { path: '/api/security/check?h=abcdef01' });
     assert.ok([404, 200].includes(r.status));
   });
 
-  t('带 title 时能做文件类型判定', async () => {
+  await t('带 title 时能做文件类型判定', async () => {
     const r = await req(PORT, { path: '/api/security/check?h=abcdef01&title=' + encodeURIComponent('木马.exe') });
     // hash 不存在 → 404；但接口不应 500
     assert.ok([200, 404].includes(r.status), '实际 ' + r.status);
@@ -182,7 +182,7 @@ async function findGoHash(port, query) {
 
   console.log('\nG7  磁力链接处理');
 
-  t('isMagnetLike 在服务端生效（磁力走渲染页而非 302）', () => {
+  await t('isMagnetLike 在服务端生效（磁力走渲染页而非 302）', () => {
     const resolver = require('./lib/resolver');
     assert.ok(resolver.isMagnetLike('magnet:?xt=urn:btih:abc'));
     assert.ok(resolver.isMagnetLike('ed2k://|file|x|'));
@@ -191,7 +191,7 @@ async function findGoHash(port, query) {
 
   console.log('\nG8  /api/search 的 sec 标注');
 
-  t('搜索结果每条（非兜底）都带 sec 字段且结构正确', async () => {
+  await t('搜索结果每条（非兜底）都带 sec 字段且结构正确', async () => {
     const r = await req(PORT, { path: '/api/search?q=' + encodeURIComponent('考研') });
     assert.strictEqual(r.status, 200);
     const j = JSON.parse(r.body);
@@ -206,7 +206,7 @@ async function findGoHash(port, query) {
     }
   });
 
-  t('/api/search 不下发 raw_url', async () => {
+  await t('/api/search 不下发 raw_url', async () => {
     const r = await req(PORT, { path: '/api/search?q=' + encodeURIComponent('考研') });
     const j = JSON.parse(r.body);
     const list = (j.data && j.data.results) || [];
@@ -215,7 +215,7 @@ async function findGoHash(port, query) {
     }
   });
 
-  t('sec 标注本身不含 URL 原文', async () => {
+  await t('sec 标注本身不含 URL 原文', async () => {
     const r = await req(PORT, { path: '/api/search?q=' + encodeURIComponent('考研') });
     const j = JSON.parse(r.body);
     const list = (j.data && j.data.results) || [];
@@ -228,7 +228,7 @@ async function findGoHash(port, query) {
 
   console.log('\nG9  /api/status 暴露安全状态');
 
-  t('/api/status.security 字段完整', async () => {
+  await t('/api/status.security 字段完整', async () => {
     const r = await req(PORT, { path: '/api/status' });
     const j = JSON.parse(r.body);
     const s = j.data && j.data.security;
@@ -255,17 +255,17 @@ async function findGoHash(port, query) {
   } else {
     const st = await req(PORT2, { path: '/api/status' });
     const j = JSON.parse(st.body);
-    t('SECURITY=0 时 status 显示已关闭', () => {
+    await t('SECURITY=0 时 status 显示已关闭', () => {
       assert.strictEqual(j.data.security.enabled, false);
       assert.strictEqual(j.data.security.headers, false);
     });
 
-    t('SECURITY=0 时不加 CSP 头', async () => {
+    await t('SECURITY=0 时不加 CSP 头', async () => {
       const r = await req(PORT2, { path: '/' });
       assert.ok(!r.headers['content-security-policy'], '关闭后不应有 CSP');
     });
 
-    t('SECURITY=0 时 /api/security/check 返回 SECURITY_DISABLED', async () => {
+    await t('SECURITY=0 时 /api/security/check 返回 SECURITY_DISABLED', async () => {
       const r = await req(PORT2, { path: '/api/security/check?h=abcdef01' });
       assert.strictEqual(r.status, 200);
       const jj = JSON.parse(r.body);
@@ -273,7 +273,7 @@ async function findGoHash(port, query) {
       assert.strictEqual(jj.error, 'SECURITY_DISABLED');
     });
 
-    t('SECURITY=0 时搜索结果不带 sec', async () => {
+    await t('SECURITY=0 时搜索结果不带 sec', async () => {
       const r = await req(PORT2, { path: '/api/search?q=' + encodeURIComponent('考研') });
       const jj = JSON.parse(r.body);
       const list = (jj.data && jj.data.results) || [];

@@ -13,9 +13,14 @@ _server.log
 # 这些都能由仓库里的脚本重新生成，不进版本库（否则每次跑质检都脏工作区）
 _e2e_report.json
 _perf_wall_*.json
+_perf_grain.json
 _editor_*.png
 preview-fade-*.png
 _shot_*.png
+# _shot_ab.js 出的 A/B 对比图（整页 + 2 倍放大，三个视觉场景）
+_ab_*.png
+# 各脚本重定向出来的运行日志
+_*_out.txt
 _t*.json
 _hhp*.json
 _tmp_*.js

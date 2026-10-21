@@ -122,8 +122,11 @@ const ok = (cond, label, extra) => {
       isFocus: document.activeElement === document.querySelector('#searchInput'),
       auraOpacity: getComputedStyle(document.querySelector('.editor-aura')).opacity,
       sweep: before.animationName,
-      fx: el.style.getPropertyValue('--fx'),
-      fy: el.style.getPropertyValue('--fy'),
+      // 柔光锚点写在 .editor-aura 自身（不是容器）：自定义属性会向后代继承，
+      // 写容器等于每次鼠标移动都让整棵输入区子树重算样式。
+      fx: document.querySelector('.editor-aura').style.getPropertyValue('--fx'),
+      fy: document.querySelector('.editor-aura').style.getPropertyValue('--fy'),
+      容器上没有锚点: el.style.getPropertyValue('--fx') === '',
       clearHidden: document.querySelector('#clearBtn').hidden,
       intentHidden: document.querySelector('#editorIntent').hidden,
     };
@@ -133,6 +136,7 @@ const ok = (cond, label, extra) => {
   ok(parseFloat(focused.auraOpacity) > 0.5, '柔光层已显现', focused.auraOpacity);
   ok(focused.sweep === 'edge-sweep', '顶边流光动画已挂上', focused.sweep);
   ok(/px$/.test(focused.fx) && /px$/.test(focused.fy), '柔光锚点已写成 px（跟随指针）', focused.fx + ',' + focused.fy);
+  ok(focused.容器上没有锚点, '锚点没有写在容器上（不会让整棵子树继承失效）', focused.容器上没有锚点);
   ok(focused.clearHidden === true, '空输入时清空按钮隐藏');
   ok(focused.intentHidden === true, '空输入时意图胶囊隐藏');
 
@@ -140,7 +144,7 @@ const ok = (cond, label, extra) => {
   const before = focused.fx;
   await mouse('mouseMoved', rect.l + 60, rect.t + 24);
   await sleep(120);
-  const fx2 = await evalJs(`document.querySelector('.chat-editor-content').style.getPropertyValue('--fx')`);
+  const fx2 = await evalJs(`document.querySelector('.editor-aura').style.getPropertyValue('--fx')`);
   ok(fx2 !== before, '移动指针后柔光锚点改变', before + ' → ' + fx2);
 
   /* ---- 意图识别 ---- */

@@ -261,14 +261,10 @@ body.home-body {
   flex-shrink: 0;
 }
 
-/* --- 搜索框（玻璃质感） -------------------------------------------------- */
+/* --- 搜索框（雾面纸感） -------------------------------------------------- */
 .chat-editor-content {
   position: relative;
   width: 100%;
-  /* 柔光锚点：默认居中，pointermove 时由 JS 改写成 px 值。
-     在这里显式给默认值，静态审查才认它是"已定义"（fallback 不算）。 */
-  --fx: 50%;
-  --fy: 50%;
   /* 雾面实色：去掉 backdrop-filter 后靠实度保证文字可读。
      94% 是实测临界值 —— 再低，浅色壁纸上的正文边缘就开始发灰。 */
   background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
@@ -348,6 +344,14 @@ body.home-body {
   z-index: 0;
   opacity: 0;
   transition: opacity 0.42s var(--ease-out);
+  /* 柔光锚点：默认居中，pointermove 时由 JS 改写成 px 值。
+     ⚠️ 变量定义在这里（而不是 .chat-editor-content）是性能要求，不是风格问题：
+     自定义属性会被后代继承，写在容器上就等于"每次移动都让整棵输入区子树
+     （textarea / 提示层 / 按钮 / 图标…几十个元素）重算样式"。
+     写在 .editor-aura 自己身上，失效范围就只剩这一个空 div。
+     P.S. 静态审查要求变量必须有显式定义，只写在 var() 的 fallback 里不算。 */
+  --fx: 50%;
+  --fy: 50%;
   background: radial-gradient(
     190px circle at var(--fx, 50%) var(--fy, 50%),
     color-mix(in srgb, var(--accent) 14%, transparent),
@@ -516,6 +520,19 @@ body.home-body {
 
 .chat-input-editor::placeholder {
   color: var(--text-faint);
+}
+
+/* ⚠️ 这是「点击后字体重映」的根因修复。
+   textarea 自带 placeholder（「描述你想找的资源…」），而聚焦且为空时，
+   打字机提示层也会在同一位置渲染示例文本 —— 原生 placeholder 在
+   value 为空时**即使聚焦也照常显示**，两层字就叠在一起，看着像重影。
+
+   用 .has-ghost 而不是 :focus 做互斥开关，是因为 :focus 会在 blur 后立刻失效，
+   而提示层是 blur 之后延迟 120ms 才清空的 —— 那 120ms 里两者会同时可见，
+   一闪而过，正是用户说的"点击后还是有重影"。用「提示层真的有内容」
+   这一个事实来控制，两者永远不可能同时可见。 */
+.chat-input-editor.has-ghost::placeholder {
+  color: transparent;
 }
 
 .chat-editor-action {

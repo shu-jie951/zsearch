@@ -174,12 +174,24 @@ button {
   contain: strict;
 }
 
-/* 极光团：三块大半径径向渐变，缓和漂移 */
+/* 极光团：三块大半径径向渐变，缓和漂移
+ *
+ * ⚠️ 这里原本有 filter: blur(72px) 和 will-change: transform，两个都已删除。
+ *    实测依据见 _perf_grain.js（无头 Edge 不受 vsync 约束，可以直接读渲染吞吐）：
+ *      只删 blur      → 横扫 p95 9ms，吞吐 354fps
+ *      连噪点一起改   → 横扫 p95 5ms，吞吐 403fps（基线是 12ms / 225fps）
+ *    blur(72px) 作用在一块 96vw×96vh 的层上，等于每帧跑一次全屏大半径高斯模糊，
+ *    而这层本身是 radial-gradient(… 0%, transparent 62%) —— 边缘本来就是渐变收尾，
+ *    72px 模糊几乎不改变画面（三个视觉场景截图逐张比对无差异）。
+ *    will-change: transform 常驻是另一笔债：永久占用一层全屏显存且不再回收，
+ *    而实测它对帧时间没有改善（437ms vs 439ms），纯负债。
+ *
+ *    保留下来的 animation 是刻意为之：单独关掉它（保留 blur）实测 223fps vs 基线 225fps，
+ *    收益在噪声范围内。也就是说"漂移本身不贵"（transform 走合成器），
+ *    贵的是它上面那层模糊。所以动画留着，模糊去掉。 */
 .atmosphere .aura {
   position: absolute;
   border-radius: 50%;
-  filter: blur(72px);
-  will-change: transform;
 }
 
 .atmosphere .aura-1 {
@@ -236,14 +248,20 @@ button {
   -webkit-mask-image: radial-gradient(ellipse 82% 62% at 50% 34%, #000 0%, transparent 78%);
 }
 
-/* 噪点：用 SVG feTurbulence 内联为 data URI（仍属纯 SVG，无外部文件） */
+/* 噪点：用 SVG feTurbulence 内联为 data URI（仍属纯 SVG，无外部文件）
+ *
+ * ⚠️ 这里原本是 mix-blend-mode: overlay，已改为默认的 normal。
+ *    这是本轮"十分卡顿"的主因，实测（_perf_grain.js，A/B 同一套鼠标轨迹）：
+ *      overlay → normal，横扫 p95 12ms → 9ms，渲染吞吐 225fps → 354fps（+57%）。
+ *    原因：overlay 要求合成器先回读底图再混合，而壁纸层带视差、transform 每帧都在变，
+ *    于是整屏混合每帧重算一次。normal 是纯 alpha 叠加，合成器不再需要底图。
+ *    opacity 只有 0.038，两种混合方式的肉眼差异测不出来（_shot_ab.js 出图逐张比对）。 */
 .atmosphere .grain {
   position: absolute;
   inset: 0;
   opacity: var(--grain-opacity);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
-  mix-blend-mode: overlay;
 }
 
 /* 暗角：把视线收拢到中央（强度克制，只压边缘 20% 左右） */

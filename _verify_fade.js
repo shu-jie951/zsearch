@@ -166,7 +166,30 @@ const ok = (cond, label, extra) => {
   ok(rest.cardBd === 'none', '搜索框没有 backdrop-filter（已改雾面实色）', rest.cardBd);
   ok(rest.pillBd === 'none', '顶栏胶囊没有 backdrop-filter', rest.pillBd);
   ok(Math.abs(parseFloat(rest.grainOpacity) - 0.05) < 0.02, '噪点层 opacity ≈ 0.05（压到几乎不可见）', rest.grainOpacity);
-  ok(rest.grainBlend === 'overlay', '噪点层保持 overlay 混合', rest.grainBlend);
+  // 2026-10-21 第二次变更：噪点层从 overlay 翻转成 normal。
+  // 依据是 _perf_grain.js 的 A/B 实测：overlay 要求合成器回读底图，而壁纸层带视差、
+  // transform 每帧都在变，于是整屏混合每帧重算；改 normal 后横扫 p95 12ms → 9ms、
+  // 吞吐 225fps → 354fps。视觉差异在 0.038/0.05 这个强度下测不出来（_shot_ab.js 出图比对）。
+  // 这条断言现在的意义反过来：**锁住 normal**，防止有人"为了质感"把 overlay 加回来，
+  // 那会直接把鼠标移动的流畅度打回去。
+  ok(rest.grainBlend === 'normal', '噪点层是 normal 混合（overlay 会每帧回读底图，见 _perf_grain.js）', rest.grainBlend);
+
+  // 全站扫描：任何非 normal 的 mix-blend-mode 都要拦下来。
+  // 混合模式会让合成器为了拿到"底图"而拆掉独立合成，只要页面下方还有东西在动
+  // （壁纸视差每帧都在动），这份代价就是每帧一次整屏回读。
+  // 这条断言是"结构护栏"：将来有人为了质感往任意层上加 overlay/multiply，
+  // 会在这里当场变红，而不是等用户反馈"又卡了"。
+  const blendScan = await evalJs(
+    `(() => {
+      var hit = [];
+      document.querySelectorAll('*').forEach(function (el) {
+        var b = getComputedStyle(el).mixBlendMode;
+        if (b && b !== 'normal') hit.push(((el.className && String(el.className).split(' ')[0]) || el.tagName) + ':' + b);
+      });
+      return hit;
+    })()`
+  );
+  ok(blendScan.length === 0, '全站没有非 normal 的混合模式（会让合成器每帧回读底图）', blendScan);
   ok(rest.layers[0].wc !== 'opacity', '壁纸层平时不留 will-change', rest.layers[0].wc);
   ok(
     rest.layers.every((l) => /opacity/.test(l.trAll) && !/filter/.test(l.trAll) && !/transform/.test(l.trAll)),
@@ -181,9 +204,13 @@ const ok = (cond, label, extra) => {
     '模糊为 0 时 filter 链里不含 blur()',
     rest.layers.map((l) => l.flt)
   );
+  // 2026-10-21 二次调整：调色（saturate / brightness）已烘焙进图片像素。
+  // 断言从"必须有调色链"翻转为"默认必须一个滤镜都没有" —— 这比以前更严：
+  // 全屏层只要带着任何 filter，合成器就得为它单独跑一次滤镜 pass，
+  // 而这一层还挂着鼠标视差、每帧都在移动 = 每帧一次全屏滤镜 pass。
   ok(
-    rest.layers.every((l) => /saturate/.test(l.flt) && /brightness/.test(l.flt)),
-    '调色链仍在（saturate + brightness）',
+    rest.layers.every((l) => l.flt === 'none'),
+    '默认状态下壁纸层没有任何 filter（调色已烘焙进图片）',
     rest.layers.map((l) => l.flt)
   );
 
@@ -219,7 +246,7 @@ const ok = (cond, label, extra) => {
   ok(mid.cardBd === 'none', '搜索框切换途中依然没有 backdrop-filter', mid.cardBd);
   ok(mid.pillBd === 'none', '顶栏胶囊切换途中依然没有 backdrop-filter', mid.pillBd);
   ok(mid.grainOpacity === '0', '噪点层已淡到 0', mid.grainOpacity);
-  ok(mid.grainBlend === 'overlay', '混合模式未改（只动 opacity）', mid.grainBlend);
+  ok(mid.grainBlend === 'normal', '切换途中混合模式也不变（只动 opacity）', mid.grainBlend);
   ok(mid.layers.every((l) => l.wc === 'opacity'), '壁纸层已提升为合成层', mid.layers.map((l) => l.wc));
   await shot(path.join(__dirname, 'preview-fade-mid.png'));
 
