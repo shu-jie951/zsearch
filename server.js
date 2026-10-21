@@ -1051,7 +1051,11 @@ app.use((req, res) => {
   res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html'));
 });
 
-const server = app.listen(config.PORT, () => {
+// 显式绑定 0.0.0.0。
+// Express 省略 host 时默认就是 0.0.0.0，但部署到容器 / 云平台时，
+// 只要哪天有人补上一个 '127.0.0.1'（比如为了"更安全"），外部就再也访问不到，
+// 而本地测试完全正常 —— 这种问题排查成本极高。写死在这里，一眼可见。
+const server = app.listen(config.PORT, '0.0.0.0', () => {
   const b = config.BRAND;
   const srcs = sourcesMeta.describe().filter((s) => s.enabled);
   console.log('');
