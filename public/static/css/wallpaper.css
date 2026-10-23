@@ -77,13 +77,21 @@ html[data-wall-tone="light"] {
   --aura-3: rgba(196, 168, 255, 0.06);
   --grain-opacity: 0.022;
 
-  /* 亮壁纸：只轻微提亮压住杂色，保色相 */
-  --wp-scrim: rgba(253, 252, 251, 0.16);
+  /* 亮壁纸：压色只剩一丝。
+   *
+   * ⚠️ 2026-10-23 大幅下调（scrim 16%→5%、veil 顶部 34%→10%）。
+   *    原来的两档白叠在一起，等于在照片上蒙了一层牛奶：
+   *    实测整屏对比度掉约 18%，用户的原话是"背景不清晰"。
+   *    清晰度不是靠锐化找回来的，是**先别盖住它**——
+   *    可读性交给文字自身的紧贴描边（见 277 行那段），不再用大范围白纱。
+   *    veil 仍保留上下两条极淡的压边，用途只剩"顶栏/页脚不要直接压在最亮的
+   *    花瓣上"这一点点依托，26% 的长度也收短到 15%/86%。 */
+  --wp-scrim: rgba(253, 252, 251, 0.05);
   --wp-veil: linear-gradient(180deg,
-      rgba(255, 255, 255, 0.34) 0%,
-      rgba(255, 255, 255, 0) 26%,
-      rgba(255, 255, 255, 0) 74%,
-      rgba(255, 255, 255, 0.4) 100%);
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0) 15%,
+      rgba(255, 255, 255, 0) 86%,
+      rgba(255, 255, 255, 0.16) 100%);
 }
 
 html[data-wall-tone="dark"] {
@@ -115,13 +123,17 @@ html[data-wall-tone="dark"] {
   --aura-3: rgba(160, 132, 235, 0.08);
   --grain-opacity: 0.038;
 
-  /* 暗壁纸：必须压下去，否则白字读不动 */
-  --wp-scrim: rgba(6, 7, 10, 0.42);
+  /* 暗壁纸：必须压下去，否则白字读不动。
+   *
+   * 2026-10-23：同样下调一档（42%→26%、顶部 52%→34%）。
+   * 亮白字压在暗照片上本来就有天然对比，不需要压到 42% 那么狠；
+   * 压过头的结果是整张图发灰、暗部细节全糊成一团，暗壁纸的观感反而变廉价。 */
+  --wp-scrim: rgba(6, 7, 10, 0.26);
   --wp-veil: linear-gradient(180deg,
-      rgba(4, 5, 8, 0.52) 0%,
-      rgba(4, 5, 8, 0.06) 24%,
-      rgba(4, 5, 8, 0.1) 68%,
-      rgba(4, 5, 8, 0.58) 100%);
+      rgba(4, 5, 8, 0.34) 0%,
+      rgba(4, 5, 8, 0.03) 16%,
+      rgba(4, 5, 8, 0.05) 84%,
+      rgba(4, 5, 8, 0.38) 100%);
 }
 
 /* 全局过渡：变量本身不可过渡，但它落到 background-color 上之后可以。
@@ -170,19 +182,23 @@ html[data-wall="on"] body {
      全屏 filter 的存在成本很高：图层还挂着视差、每帧都在移动，
      等于每帧重跑一次全屏滤镜 pass。 */
   filter: var(--wp-filter, none);
-  /* 视差与放大**全部由 JS 直接写 inline transform**（见 wallpaper.js 的 write）。
-     这里只是 JS 生效之前的初值，也是"视差没启用"（触屏 / reduced-motion）时的终值。
-
-     为什么不再用 CSS 变量：
-       自定义属性会被后代继承，赋值时浏览器要沿继承链传播失效；
-       transform 是普通属性，失效范围只有这个元素自己。
-       而且每帧少两次属性写。
-
-     那 1.012 是保险放大：background-size:cover 时图片正好铺满，
-     位移 12px 就会把边缘露出来（能看到一条底色）。
-     1.2% 在 1920 上余 23px、在 1080 上余 13px，刚好盖住最大位移。
-     放大本身不额外花钱 —— transform 图层每帧本来就要采样一次。 */
-  transform: scale(1.012);
+  /* 视差已整体移除（2026-10-23），这一层现在**静止**。
+   *
+   * 用户要求"把背景固定"，原来的实现是整张图随鼠标反向位移 ±12px。
+   * 位移本身确实能造出纵深，但它同时带来两笔账：
+   *   ① 背景永远在动 = "背景不固定"，看长列表时余光一直在被牵动；
+   *   ② transform 每帧都在变 → 全屏图层每帧重新合成，模糊>0 时还要重跑滤镜。
+   * 所以纵深改由**局部光斑**表达（.wall-light，见文件末尾），
+   * 图本身一动不动 —— 这比整图位移更接近"相机不动、光在动"的真实观感。
+   *
+   * 连带的两处清理：
+   *   · 原来的 scale(1.012) 是纯保险，用来盖住 12px 位移的露边。
+   *     不位移就不需要它了，去掉之后这张图**不再被重采样**——
+   *     1.2% 的放大在 1920 上要多插值一遍，实际会让照片微微发软，
+   *     这也是"背景不够清晰"的一个隐性来源。
+   *   · blur > 0 时仍需要 overscan（模糊的采样半径会向外扩，不放大就露边），
+   *     那个 scale 改由 JS 单独写（wallpaper.js 的 syncLayerScale）。 */
+  transform: none;
   /* 只过渡 opacity。
      filter / transform 绝不做过渡：这两个值由 tone 决定，跨 tone 切换时若给它们
      加 transition，就等于让浏览器对一张全屏大图连续 400~500ms 每帧重跑 blur+saturate，
@@ -235,9 +251,111 @@ html[data-wall="on"] body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
 }
 
-/* 开启壁纸时，原极光层降权，避免和照片打架 */
+/* --------------------------------------------------------------------------
+   二·之三、跟随光标的柔光斑（.wall-light）
+   --------------------------------------------------------------------------
+   这是"把背景固定住"之后，用来接替视差的那一手：
+   图一动不动，但有一团很淡的光跟着指针在画面上缓慢滑过
+   —— 观感上像"光在动、景没动"，比整图位移更贵气，也更不打扰阅读。
+
+   为什么能做得比原来更省：
+     · 它是一个 **900×900 的固定尺寸块**，靠 transform: translate3d 移动。
+       transform 走合成器，**不触发重绘**，也不改背景的 background-position
+       （那条路每帧都要重算整张全屏背景的绘制，是最贵的一档）。
+     · 它不挂在 .wall-layer 上，所以不会让照片那一层重新合成。
+     · 收敛后 JS 停止 rAF —— 鼠标停下就没有任何持续开销。
+
+   位置与不透明度都由 JS 控制（wallpaper.js 的 initPointerLight）：
+   JS 负责 .is-live 的开关，CSS 只负责"长什么样"。
+   -------------------------------------------------------------------------- */
+
+.wall-light {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 900px;
+  height: 900px;
+  /* 用 translate 定位，所以这里要先把自己挪回中心 */
+  margin: -450px 0 0 -450px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  /* 圆心是"品牌的暖橙"包在"中性白"里面：
+     8% 的白负责提亮画面，中心那一点点 accent 让这团光带上温度，
+     不至于像手电筒。两者都很淡 —— 光的价值在"几乎察觉不到，
+     但鼠标一动就知道画面是活的"。 */
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.1) 0%,
+    color-mix(in srgb, var(--accent) 5%, transparent) 34%,
+    transparent 66%
+  );
+  transition: opacity 0.6s var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
+  /* 强隔离：这一层绝不会把父级 .wall-stage 的 contain:strict 撑破，
+     也不会参与任何布局计算 */
+  contain: layout style;
+}
+
+html[data-wall-tone="dark"] .wall-light {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.06) 0%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 36%,
+    transparent 66%
+  );
+}
+
+/* 只有 JS 确认"指针真的动过"才亮。
+   否则一进页面正中就挂着一团光，反而像脏点。 */
+.wall-light.is-live {
+  opacity: 1;
+}
+
+/* 关动效 / 触屏：光斑不参与（触屏没有悬停，留在最后点到的位置会像污渍） */
+@media (prefers-reduced-motion: reduce), (pointer: coarse) {
+  .wall-light {
+    display: none;
+  }
+}
+
+/* 开启壁纸时，原极光层降权，避免和照片打架。
+   同日把 0.55 再降到 0.28：三个极光团是三块大半径颜色（暖橙/蓝/紫），
+   叠在照片上就是一层极淡的**彩雾**——单看每一块都察觉不到，
+   合起来却会让照片的色调"说不清"。清晰度的一半来自减法。 */
 html[data-wall="on"] .atmosphere .aura {
-  opacity: 0.55;
+  opacity: 0.28;
+}
+
+/* --------------------------------------------------------------------------
+   二·补、壁纸上的两层减法（2026-10-23）
+   -------------------------------------------------------------------------- */
+
+/* ① 网格：56px 的技术感底纹，本来就只是给纯纸面用的。
+   压在照片上它变成一层**摩尔纹干扰**，正是"看着不清晰"的直接来源之一
+   —— 眼睛会把规则细线读成"糊"。开壁纸时直接不画。 */
+html[data-wall="on"] .atmosphere .grid {
+  display: none;
+}
+
+/* ② 暗角：原本用 var(--bg)（纸白 #FBFAF9）在 128% 处收边，
+   在纯纸面上是"四角微微变亮"，在照片上却是**四边发白的雾边**，
+   和上面那条白色条带是同一个病。开壁纸时换成中性的暗角：
+   只压 12%，且从 70% 才开始，作用是收视线，不是蒙一层。 */
+html[data-wall="on"] .atmosphere .vignette {
+  background: radial-gradient(
+    ellipse 150% 118% at 50% 38%,
+    transparent 70%,
+    rgba(10, 10, 14, 0.12) 130%
+  );
+}
+
+/* 噪点：壁纸层自己已经有一层 .wall-grain，两层叠着等于把噪点浓度翻倍。
+   （base.css 那层的 --grain-opacity 在亮调下是 0.022、暗调 0.038，
+   而 .wall-grain 固定 0.05 —— 合起来接近 0.09，在照片上会明显"发沙"。）
+   开壁纸时只留 .wall-grain 那一层，它在 stage 内部、跟随壁纸一起淡入，
+   切换时的时序也更干净。 */
+html[data-wall="on"] .atmosphere .grain {
+  display: none;
 }
 
 /* --------------------------------------------------------------------------
@@ -271,16 +389,26 @@ html[data-wall="on"] .explore-chip {
   border: 1px solid var(--border);
 }
 
-/* 直接压在壁纸上的裸文字：加一层同向光晕。
+/* 直接压在壁纸上的裸文字：加一层同向描边。
    浅色壁纸的暗部（树干、阴影）会把灰字吃掉，这是摄影排版的常规解法，
-   比给整条页脚套玻璃底干净得多。 */
+   比给整条页脚套玻璃底干净得多。
+
+   ⚠️ 2026-10-23 修掉"字体重影"。
+   原来是 `0 0 14px rgba(255,255,255,.92)` + `0 1px 2px`，两层白叠出去 14px。
+   在亮花瓣上，14px 的白晕把字形轮廓**向外撑开一圈**，读起来就是"两行字错开
+   叠在一起"——用户截图里那些说不清是糊还是双影的小字，就是它。
+   光晕越宽越像影子，越窄越像描边。所以宽度收到 3px，
+   第二层从 2px 收到 1px：作用从"打光"变成"给字形卡一条边"，
+   既能在深色树干上保住对比度，又不会长出一圈白毛。
+
+   暗色壁纸反向同理：黑晕 16px→3px。 */
 html[data-wall="on"] .home-logo-sub,
 html[data-wall="on"] .explore-head,
 html[data-wall="on"] .site-footer,
 html[data-wall="on"] .home-header-brand {
   text-shadow:
-    0 0 14px rgba(255, 255, 255, 0.92),
-    0 1px 2px rgba(255, 255, 255, 0.75);
+    0 0 3px rgba(255, 255, 255, 0.94),
+    0 1px 1px rgba(255, 255, 255, 0.62);
 }
 
 html[data-wall="on"][data-wall-tone="dark"] .home-logo-sub,
@@ -288,8 +416,8 @@ html[data-wall="on"][data-wall-tone="dark"] .explore-head,
 html[data-wall="on"][data-wall-tone="dark"] .site-footer,
 html[data-wall="on"][data-wall-tone="dark"] .home-header-brand {
   text-shadow:
-    0 0 16px rgba(0, 0, 0, 0.86),
-    0 1px 3px rgba(0, 0, 0, 0.66);
+    0 0 3px rgba(0, 0, 0, 0.9),
+    0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 /* ---- 结果页 ----
@@ -322,35 +450,98 @@ html[data-wall="on"] .result-item.keyboard-focus {
   background: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
 }
 
-/* 顶栏：实色半透明，不用毛玻璃（全站已去 backdrop-filter）。
-   ⚠️ 光给 .results-header 上色会踩一个坑：它有 max-width:862px + margin:auto，
-   于是页面正中浮出一个**硬边矩形**，左右两边还露着壁纸。暗壁纸下不明显，
-   一换到亮壁纸（檐外花枝那种）就是一块贴上去的白板。
-   所以颜色画在一条撑满 100vw 的 ::before 上，header 自己保持透明。 */
+/* 顶栏：不再画一条实色带，只留一层**向下淡出**的顶光。
+   *
+   * ⚠️ 2026-10-23 重做。原实现是 `top:0; bottom:0` + 92% 纸白 + 1px 下边框，
+   *    在 120px 高的顶栏上等于一块**硬边白色条带**：
+   *    上沿贴屏幕、下沿一条 1px 线，和下方鲜艳的壁纸形成一条刀切似的接缝。
+   *    用户截图里指的就是它（"背景上方的白色条带"）。
+   *
+   *    为什么当初会写成实色带：`.results-header` 有 max-width:862px + margin:auto，
+   *    直接给 header 上色会在页面正中浮出一个硬边矩形，所以颜色挪到撑满 100vw 的
+   *    ::before 上 —— 这一步是对的，错的是"填满 + 描边"这个形状。
+   *
+   * 现在的形状：band 比顶栏高 30px（bottom:-30px），用 mask 让最后 20% 渐隐。
+   *   于是下沿没有任何边界可言，白色带子"化"进壁纸里。
+   *   同时底色从 92% 降到 52%，并且改成自上而下的渐变——
+   *   顶部那点白只为把品牌标的纸底与照片分开，到内容第二行就已经没有了。
+   *
+   * 注意 mask 与 -webkit-mask 必须成对写：
+   *   只写标准属性时，Chromium 系仍需要前缀（本项目就是跑在 Chromium 里）。 */
 html[data-wall="on"] .results-header {
   background: transparent;
   border-bottom: 0;
+  /* 顶栏底色撤掉之后，里面那几处**没有自己底色**的文字（来源筛选胶囊、
+     排序项）就直接压在照片上了 —— 实测灰字在花瓣上读不出来。
+     把 3px 紧贴描边写在 header 上，靠 text-shadow 的可继承性一次覆盖全顶栏：
+     有底色的东西（搜索框、当前选中的胶囊）本来就是浅底，白描边压在浅底上
+     完全看不见，不会有副作用。 */
+  text-shadow:
+    0 0 3px rgba(255, 255, 255, 0.94),
+    0 1px 1px rgba(255, 255, 255, 0.6);
+}
+
+html[data-wall-tone="dark"][data-wall="on"] .results-header {
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.9),
+    0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 html[data-wall="on"] .results-header::before {
   content: '';
   position: absolute;
   top: 0;
-  bottom: 0;
+  bottom: -30px;
   left: 50%;
   width: 100vw;
   transform: translateX(-50%);
   z-index: -1;
   pointer-events: none;
-  background: color-mix(in srgb, var(--bg) 93%, transparent);
-  border-bottom: 1px solid var(--border);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--bg) 52%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 14%, transparent) 68%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 78%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 78%, transparent 100%);
 }
 
 /* 亮壁纸下顶栏再压实一点：品牌标是"纸底 + 墨色细描边"的组合标，
-   纸底一旦和背景同色，只剩那条 18% 的细线在撑形，配上 82% 的浅带
-   会整体发灰。92% 之后纸底重新浮出来，描边也有东西可依。 */
+   纸底一旦和背景同色，就只剩那条 18% 的细线在撑形。
+   但**只加顶部**：52% → 66%，且渐变到 68% 处已经归零，
+   不会再出现"上白下透"的横向分界。 */
 html[data-wall-tone="light"][data-wall="on"] .results-header::before {
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--bg) 66%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 16%, transparent) 68%,
+    transparent 100%
+  );
+}
+
+/* 来源筛选胶囊（.cloud-tab）在壁纸下的状态。
+   *
+   * 它在 results.css 里是 `background: transparent` —— 没壁纸时靠纸面本身当底，
+   * 完全成立；但顶栏那条白带撤掉之后，未选中的胶囊就是**灰字直接压在照片上**。
+   * 这里补一层 58% 的雾面底：足够托住字，又不会变回一排小白板。
+   *
+   * 三条规则的顺序不能换：基础态 → 选中态 → 悬停态。
+   * 原因是这里的选择器带 html[data-wall] 属性，特异度(0,2,1) 高于 results.css
+   * 里的 .cloud-tab.active(0,2,0)，不显式补一条选中态就会把高亮吃掉。 */
+html[data-wall="on"] .cloud-tab {
+  background: color-mix(in srgb, var(--bg-elevated) 58%, transparent);
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+html[data-wall="on"] .cloud-tab.active {
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  border-color: var(--border);
+}
+
+html[data-wall="on"] .cloud-tab:hover:not(.active) {
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+  border-color: var(--border);
 }
 
 /* 搜索框：壁纸下需要更强的「浮起感」，否则白色玻璃在浅色照片上边界会消失 */
@@ -362,22 +553,54 @@ html[data-wall="on"] .results-ai-composer {
 
 /* 统计行 / 工具条 / 中间态提示：这几块**不在顶栏里**，是直接压在壁纸上的纯文字。
    灰字压在彩色照片上会糊成一团，但又不能给它们加底色块（页面上再多几个白框
-   就碎了）。按 tone 走反向光晕 —— 亮壁纸用白晕、暗壁纸用黑晕，既不掉对比度
-   也不增加任何实体色块。 */
+   就碎了）。按 tone 走反向描边 —— 亮壁纸用白描、暗壁纸用黑描，既不掉对比度
+   也不增加任何实体色块。
+   同日做了与上面同一处修正：12px→3px，把"光晕"收成"描边"。 */
 html[data-wall="on"] .results-stats,
 html[data-wall="on"] .wb-tools,
 html[data-wall="on"] .searching-hint {
   text-shadow:
-    0 0 12px rgba(255, 255, 255, 0.92),
-    0 1px 2px rgba(255, 255, 255, 0.72);
+    0 0 3px rgba(255, 255, 255, 0.94),
+    0 1px 1px rgba(255, 255, 255, 0.6);
 }
 
 html[data-wall-tone="dark"][data-wall="on"] .results-stats,
 html[data-wall-tone="dark"][data-wall="on"] .wb-tools,
 html[data-wall-tone="dark"][data-wall="on"] .searching-hint {
   text-shadow:
-    0 0 14px rgba(0, 0, 0, 0.88),
-    0 1px 3px rgba(0, 0, 0, 0.62);
+    0 0 3px rgba(0, 0, 0, 0.9),
+    0 1px 2px rgba(0, 0, 0, 0.58);
+}
+
+/* 统计行还要再加一档"坐实"（2026-10-23 实测补的）。
+   描边只能把字从背景里"拔"出来，救不了它本来只有 14px / 55% 灰的体量：
+   压在檐外花枝的亮花瓣上，整行读起来像一层浮灰。
+   两个动作，都不加白框：
+     ① 正文从 --text-muted(#5b5b66) 提到 --text-strong(#18181b)；
+     ② 行内的 .src-tag 本来只有 border 没有底色（border 在照片上是看不见的），
+        给 72% 雾面底 —— 它已经是个胶囊，补底不算新增方块。 */
+html[data-wall="on"] .results-stats {
+  color: var(--text-strong);
+}
+
+html[data-wall="on"] .results-stats .src-tag {
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+/* .warn 自身的底是 rgba(251,191,36,.1)，压在照片上等于没有。
+   必须显式覆盖，否则上面那条更"重"的选择器会把它吃掉。 */
+html[data-wall="on"] .results-stats .src-tag.warn {
+  background: color-mix(in srgb, #fbbf24 26%, var(--bg-elevated));
+  border-color: rgba(180, 83, 9, 0.32);
+  color: #9a4a06;
+}
+
+html[data-wall-tone="dark"][data-wall="on"] .results-stats .src-tag.warn {
+  background: color-mix(in srgb, #fbbf24 22%, var(--bg-elevated));
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fbbf24;
 }
 
 /* 工具条按钮同理：原来的 55% 底在壁纸上看不出边界，抬到 90% 就是一枚干净的胶囊 */

@@ -131,9 +131,11 @@
   var activeIdx = 0;
   var switchSeq = 0; // 竞态守卫：连续切图时丢弃过期的异步回调
 
-  // 视差的"把当前位移立刻同步到可见层"入口，由 initParallax 安装。
-  // 切图后新层拿到的是 CSS 初始 transform，不同步就会从 (0,0) 跳一下。
-  var parallaxSync = null;
+  // 「把当前缩放立刻同步到壁纸层」的入口。
+  // 视差删掉之后它只剩一个职责：blur > 0 时补 1.06 的 overscan 防露边。
+  var layerSync = null;
+  // 跟随光标的柔光斑（.wall-light），由 initPointerLight 安装。
+  var pointerLight = null;
 
   var systemDark =
     window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
@@ -157,8 +159,8 @@
 
     root.style.setProperty('--wp-scrim-op', String(state.scrim));
     // 模糊变了 → transform 里的 scale 也要跟着变（blur>0 需要额外 1.06 防露边）。
-    // 位移值没变，只是重新拼一次 transform。
-    if (parallaxSync) parallaxSync();
+    // 背景已经不再位移，这里只重拼一次缩放，不是每帧。
+    if (layerSync) layerSync();
 
     // 整条 filter 由这里拼好，而不是在 CSS 里拼。
     //
@@ -208,112 +210,116 @@
   }
 
   /**
-   * 壁纸鼠标视差。
+   * 壁纸层缩放同步（只服务 blur 的 overscan）。
    *
-   * 这是"高级感"里最便宜也最有效的一招：整张背景随鼠标做几像素的反向位移，
-   * 前景卡片不动 —— 人眼立刻会把它读成「背景在后面，内容在前面」。
+   * 视差移除后这一层平时是**完全静止**的（CSS 里 transform: none）。
+   * 唯一还需要 transform 的情况是用户把模糊滑杆拖到 > 0：
+   * blur 的采样半径会向外扩，cover 正好铺满时四边会露出舞台底色，
+   * 所以补一个 1.06 的放大把它盖住。
    *
-   * 三条纪律：
-   *   1. 只改 transform（合成器线程），绝不改 top/left/margin；
-   *   2. 用缓动跟随而不是直接赋值，鼠标一动图就瞬移的话会显得廉价；
-   *   3. 触屏、prefers-reduced-motion 一律不启用 —— 手机上没有"悬停"这回事，
-   *      跟着手指晃只会晕。
-   *
-   * 缓动用 rAF 自驱动：只有"还没追上目标"时才继续请求下一帧，
-   * 停下之后彻底不再占用主线程。
+   * 只在"模糊值变化"时写一次，不跟帧。这是相对旧版最实在的一处减负：
+   * 旧版每帧给最多两层全屏元素写 transform，现在一帧都不写。
    */
-  function initParallax() {
+  function syncLayerScale() {
+    var s = state && state.blur > 0 ? 1.06 : 1;
+    var tf = s === 1 ? '' : 'scale(' + s.toFixed(2) + ')';
+    for (var i = 0; i < layers.length; i++) layers[i].style.transform = tf;
+  }
+
+  /**
+   * 跟随光标的柔光斑。
+   *
+   * 用来接替原来的"整张背景随鼠标位移"：
+   *   · 背景固定不动 → 滚动长列表时余光不再被牵动（这就是用户要的"背景固定"）；
+   *   · 位移从"整幅图"缩到"一团 900px 的光"，
+   *     需要重新合成的面积从整屏降到约 1/6 屏。
+   *
+   * 四条纪律（前三条沿用视差那一版的实测结论）：
+   *   1. 只改 transform，绝不改 top/left/margin，也绝不改 background-position
+   *      —— 后者每帧都要重算整张背景的绘制，是最贵的一档；
+   *   2. 缓动跟随而不是直接赋值。光斑瞬移像手电筒，缓动才像环境光；
+   *   3. 触屏 / prefers-reduced-motion 一律不启用（触屏没有悬停，
+   *      光会停在最后点到的位置，看着像一块污渍）；
+   *   4. 收敛后立刻停 rAF —— 鼠标停下就是零开销，不做"低频常驻"。
+   *
+   * 只在 [data-wall="on"] 时工作：没有壁纸时底色是纯纸面，
+   * 一团白光压在纯白上根本看不见，挂了也白挂。
+   */
+  function initPointerLight() {
+    // 缩放同步与动效无关：先无条件挂上，免得触屏设备上 blur 露边。
+    layerSync = syncLayerScale;
+    syncLayerScale();
+
     var reduce =
       window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduce) return;
+    var coarse =
+      window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (reduce || coarse) return;
 
-    var AMP = 12;           // 最大位移（px），再大就不是纵深而是晃
-    var EASE = 0.12;        // 每帧靠近目标的比例
-    var tx = 0, ty = 0;     // 目标
+    var EASE = 0.14;        // 每帧靠近目标的比例，比原来的视差略快：光要跟手
+    var tx = 0, ty = 0;     // 目标（视口坐标）
     var cx = 0, cy = 0;     // 当前
     var raf = 0;
+    var placed = false;     // 首次定位前不缓动，否则光会从左上角滑进来
 
-    // 放大系数：1.012 用来盖住位移（background-size:cover 铺满时位移会露边），
-    // blur > 0 时再叠 1.06（模糊的采样半径会向外扩）。
-    function scaleOf() {
-      return (state && state.blur > 0 ? 1.06 : 1) * 1.012;
+    function write() {
+      if (!pointerLight) return;
+      // 写成 translate3d 而不是 translate：前者确保这一层被提升为合成层，
+      // 移动时不触发重绘，只做一次纹理搬运。
+      pointerLight.style.transform =
+        'translate3d(' + cx.toFixed(1) + 'px,' + cy.toFixed(1) + 'px,0)';
     }
-
-    /* 这里曾经有过一段"动的时候给可见层加 will-change: transform、
-       停下 700ms 再还回去"的图层提升逻辑。删掉的原因很直接：实测无效。
-       开与不开，60 次鼠标移动的主线程耗时分别是 439ms / 437ms（噪声级别），
-       而代价是它会和切换动画的 `will-change: opacity` 抢同一个属性，
-       让"淡入结束后已释放 will-change"这条断言失效。
-       没有效果的复杂度就是负债，不留。 */
-
-    /* 每帧只做**一次属性写**，而且只写给**当前可见的那一层**。
-       三个细节都是踩出来的：
-
-       ① 不用 CSS 变量，直接写 transform。
-          自定义属性会被后代继承，赋值时浏览器要沿继承链传播失效；
-          transform 是普通属性，失效范围只有这个元素自己。
-
-       ② 只写可见层。
-          两层里有一层 opacity:0，它照样会参与样式重算和图层合成 ——
-          给它写位移等于白烧一帧的合成预算。
-
-       ③ 交叉淡入期间（data-wall-fading 存在）两层都要写。
-          那 520ms 里两层同时可见，只让一层动就会看成"两张图错位"。 */
-    function write(vx, vy) {
-      var tf = 'scale(' + scaleOf().toFixed(4) + ') translate3d(' +
-        vx.toFixed(2) + 'px,' + vy.toFixed(2) + 'px,0)';
-      var fading = !!(root.dataset && root.dataset.wallFading);
-      for (var i = 0; i < layers.length; i++) {
-        if (fading || layers[i].classList.contains('is-on')) {
-          layers[i].style.transform = tf;
-        }
-      }
-    }
-
-    var frame = 0;
 
     function tick() {
       raf = 0;
-      cx += (tx - cx) * EASE;
-      cy += (ty - cy) * EASE;
-      frame++;
-      // ★ 每 2 帧写一次（30fps）。
-      // 视差本身是缓动跟随，位移每次只有零点几像素，30fps 和 60fps
-      // 在观感上分不出来；但全屏图层的合成为此少跑一半 —— 在集成显卡 /
-      // 软件合成的机器上，这一半就是"能不能流畅"的分界线。
-      // 缓动计算仍然每帧推进，所以跟随手感不变，只是刷新率减半。
-      if (frame % 2 === 0) write(cx, cy);
-      if (Math.abs(tx - cx) > 0.08 || Math.abs(ty - cy) > 0.08) {
-        raf = window.requestAnimationFrame(tick);
+      if (!placed) {
+        cx = tx;
+        cy = ty;
+        placed = true;
       } else {
-        // 收敛时补最后一帧，避免停在半路上（150% 之内的残余位移）
-        write(cx, cy);
+        cx += (tx - cx) * EASE;
+        cy += (ty - cy) * EASE;
+      }
+      write();
+      if (Math.abs(tx - cx) > 0.5 || Math.abs(ty - cy) > 0.5) {
+        raf = window.requestAnimationFrame(tick);
       }
     }
-
-    // 切图后新层拿到的是 CSS 里的初始 transform，需要立刻同步到当前位移，
-    // 否则会从 (0,0) 跳一下。
-    parallaxSync = function () {
-      write(cx, cy);
-    };
 
     window.addEventListener(
       'pointermove',
       function (e) {
-        if (e.pointerType === 'touch') return;
-        // 反向位移：鼠标往右，背景往左，产生"视差"而不是"跟随"
-        tx = (e.clientX / window.innerWidth - 0.5) * -2 * AMP;
-        ty = (e.clientY / window.innerHeight - 0.5) * -2 * AMP;
+        if (e.pointerType === 'touch' || !pointerLight) return;
+
+        // 壁纸关掉时把光收掉，且不做任何后续计算
+        if (root.dataset.wall !== 'on') {
+          if (pointerLight.classList.contains('is-live')) {
+            pointerLight.classList.remove('is-live');
+          }
+          return;
+        }
+
+        tx = e.clientX;
+        ty = e.clientY;
+
+        if (!pointerLight.classList.contains('is-live')) {
+          // 第一次移动：直接落位再淡入。
+          // 否则光会从 (0,0) 一路缓动到指针处，用户会看到一团光"飞"进来。
+          cx = tx;
+          cy = ty;
+          placed = true;
+          write();
+          pointerLight.classList.add('is-live');
+        }
         if (!raf) raf = window.requestAnimationFrame(tick);
       },
       { passive: true }
     );
 
-    // 指针离开窗口时归位，否则背景会一直歪着
+    // 指针离开窗口：只淡出，不归位。
+    // 归位会让那团光当着用户的面往左上角飞走，比不归位更刻意。
     window.addEventListener('pointerleave', function () {
-      tx = 0;
-      ty = 0;
-      if (!raf) raf = window.requestAnimationFrame(tick);
+      if (pointerLight) pointerLight.classList.remove('is-live');
     });
   }
   /**
@@ -380,9 +386,9 @@
 
       activeIdx = 1 - activeIdx;
 
-      // 新层刚拿到 CSS 里的初始 transform，把当前位移补上去，
-      // 否则它会在淡入的同时从 (0,0) 滑一下 —— 视觉上像"图在漂"。
-      if (parallaxSync) parallaxSync();
+      // 新层刚继承到的是上一次残留的 inline transform，
+      // 这里按当前模糊值重新同步一次缩放（背景已不再位移）。
+      if (layerSync) layerSync();
 
       // 4) 过渡结束后收尾：
       //    旧层可能还留着上一次非动画切换时写进去的 inline transition:none，
@@ -549,11 +555,24 @@
 
   /* ---- 构建壁纸相关的 DOM（只做一次） ---- */
 
+  /* 光斑节点单独成函数，是因为它有两条创建路径：
+     舞台是本次新建的，和舞台来自页面里已有的静态标记（比如以后想改成 SSR）。
+     两条路都得保证 .wall-light 存在，否则 initPointerLight 会拿到 null 静默失效。 */
+  function ensureLight() {
+    pointerLight = stage.querySelector('.wall-light');
+    if (pointerLight) return;
+    pointerLight = document.createElement('div');
+    pointerLight.className = 'wall-light';
+    pointerLight.setAttribute('aria-hidden', 'true');
+    stage.appendChild(pointerLight);
+  }
+
   function buildStage() {
     var existing = document.querySelector('.wall-stage');
     if (existing) {
       stage = existing;
       layers = Array.prototype.slice.call(existing.querySelectorAll('.wall-layer'));
+      ensureLight();
       return;
     }
 
@@ -580,6 +599,8 @@
     stage.appendChild(scrim);
     stage.appendChild(veil);
     stage.appendChild(grain);
+    // 光斑放最上：它是"光"，本来就该落在所有滤镜层之上
+    ensureLight();
     document.body.appendChild(stage);
 
     layers = [a, b];
@@ -927,9 +948,9 @@
     loadState();
     apply('init');
 
-    // 视差挂在首屏之后：它只影响鼠标移动时的几像素位移，
+    // 光斑挂在首屏之后：它只在鼠标移动时生效，
     // 和首屏渲染没有先后依赖，放这里不抢关键路径。
-    initParallax();
+    initPointerLight();
 
     document.addEventListener('keydown', onKeydown);
 

@@ -110,13 +110,21 @@
    动画被拦截（reduced-motion / 后台标签页）时另有 setTimeout 兜底。 */
 
 @media (prefers-reduced-motion: reduce) {
-  /* 关掉动效时，聚光仍然保留（它是静态明暗差异，不是运动），
-     但过渡要瞬时，滚入动画直接不生效。 */
-  #resultList .result-item::before,
+  /* 关动效时聚光仍然保留（它是静态明暗差异，不是运动），
+     但过渡要瞬时 —— 所以这里**只**取消 transition。
+
+     ⚠️ 2026-10-23 修掉一个真 bug：原来这条规则把 `::before` 和
+     `.pending-in.in-view` 写在同一个选择器组里，一起给了 `opacity: 1`。
+     结果在系统开了「减少动态效果」的用户那边，**每一张卡片**的聚光都是常亮的，
+     "只有被指向的那一张亮"这个开关直接失效 —— 整页铺满橙色光斑，
+     既不好看，也把原本靠亮度差表达的焦点丢掉了。
+     现在拆成两条：光斑只去动画，`opacity` 交回 .is-spot 控制。 */
+  #resultList .result-item::before {
+    transition: none;
+  }
   .result-item.pending-in.in-view {
     animation: none;
     opacity: 1;
-    transition: none;
   }
   .result-item.pending-in {
     opacity: 1;
