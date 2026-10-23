@@ -264,41 +264,66 @@ const ok = (cond, label, extra) => {
   }
 
   // ==================================================================
-  console.log('\n=== 4. 视差特效 ===');
+  console.log('\n=== 4. 背景固定 / 光斑跟随 ===');
   // ==================================================================
   {
-    // 模拟鼠标移动，看壁纸层的 transform 是否随动。
-    // 2026-10-21 二次调整：视差不再走 CSS 变量（自定义属性会向后代继承，
-    // 赋值时沿继承链传播失效），改成 JS 直接写 inline transform。
-    // 所以这里改读 transform 矩阵的平移分量 —— 比以前更直接。
-    const readTf = async () => evalJs(`(() => {
+    // 2026-10-23 起：整图随鼠标位移的视差已删除，背景**完全静止**，
+    // "动"的职责交给 900×900 的柔光斑（.wall-light）。
+    // 所以这一节的断言整体反过来：壁纸层的位移必须**始终为 0**，
+    // 能不能"活"由光斑的 transform 来证明。
+    const readLayerTf = async () => evalJs(`(() => {
       const l = document.querySelector('.wall-layer.is-on') || document.querySelector('.wall-layer');
       const t = getComputedStyle(l).transform;
-      const m = t.match(/matrix\(([^)]+)\)/);
+      const m = t.match(/matrix\\(([^)]+)\\)/);
       if (!m) return { raw: t, tx: 0, ty: 0 };
       const v = m[1].split(',').map(Number);
       return { raw: t, tx: v.length === 6 ? v[4] : 0, ty: v.length === 6 ? v[5] : 0 };
     })()`);
 
+    const readLightTf = async () => evalJs(`(() => {
+      const l = document.querySelector('.wall-light');
+      if (!l) return null;
+      const cs = getComputedStyle(l);
+      const m = cs.transform.match(/matrix\\(([^)]+)\\)/);
+      const v = m ? m[1].split(',').map(Number) : null;
+      return {
+        live: l.classList.contains('is-live'),
+        opacity: cs.opacity,
+        raw: cs.transform,
+        tx: v && v.length === 6 ? v[4] : 0,
+        ty: v && v.length === 6 ? v[5] : 0,
+      };
+    })()`);
+
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 200, y: 200, button: 'none' }, sid);
     await sleep(300);
-    const v1 = await readTf();
+    const b1 = await readLayerTf();
+    const l1 = await readLightTf();
+
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1300, y: 760, button: 'none' }, sid);
-    await sleep(500);
-    const v2 = await readTf();
+    await sleep(600);
+    const b2 = await readLayerTf();
+    const l2 = await readLightTf();
 
-    ok(v1.tx !== v2.tx || v1.ty !== v2.ty, '鼠标移动会推动背景视差', { v1, v2 });
-    const amp = Math.max(Math.abs(v1.tx), Math.abs(v1.ty), Math.abs(v2.tx), Math.abs(v2.ty));
-    ok(amp <= 14, '视差幅度克制（≤14px，不晃）', { tx: v2.tx, ty: v2.ty, amp });
+    // ★ 核心不变式：背景固定
+    ok(b1.raw === b2.raw && b1.tx === 0 && b1.ty === 0 && b2.tx === 0 && b2.ty === 0,
+      '★ 鼠标移动不推动背景（壁纸层位移恒为 0）', { b1: b1.raw, b2: b2.raw });
 
-    // 反向位移：鼠标往右下，背景应该往左上（负方向）
-    ok(v2.tx <= 0 && v2.ty <= 0, '位移方向是反向的（产生纵深，而不是跟随）', { tx: v2.tx, ty: v2.ty });
+    // 光斑必须真的跟着走，否则"高级感"就成了空话
+    ok(!!l2 && l2.live && l2.opacity === '1', '指针移动后光斑亮起', l2 && l2.opacity);
+    ok(!!l2 && (l1.tx !== l2.tx || l1.ty !== l2.ty), '光斑随指针移动', { l1: [l1.tx, l1.ty], l2: [l2.tx, l2.ty] });
 
-    const usesVar = await evalJs(`(() => {
-      const l = document.querySelector('.wall-layer');
-      return getComputedStyle(l).transform;
+    // 光斑落点要跟指针同向（是"跟随"，不是"反向视差"）
+    ok(!!l2 && l2.tx > l1.tx && l2.ty > l1.ty, '光斑位移方向与指针一致（跟随而非反向）', { l1: [l1.tx, l1.ty], l2: [l2.tx, l2.ty] });
+
+    // 尺寸受控：整屏合成会把这项省下来的性能又还回去
+    const size = await evalJs(`(() => {
+      const l = document.querySelector('.wall-light');
+      if (!l) return null;
+      const r = l.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height) };
     })()`);
-    ok(/matrix/.test(usesVar), '壁纸层 transform 已生效', usesVar);
+    ok(!!size && size.w <= 1000 && size.h <= 1000, '光斑尺寸受控（≤1000px，不做整屏合成）', size);
   }
 
   await sleep(300);

@@ -20,6 +20,11 @@
  *      2. 全屏壁纸层常驻 filter（saturate + brightness），而图层每帧都在动
  *         → 每帧一次全屏滤镜 pass。
  *    → 用 CDP Performance 指标测「鼠标移动 60 次」带来的重算/布局增量。
+ *
+ *    2026-10-23 追加：整图位移的视差已在需求下**整体删除**（背景改为固定），
+ *    改由 900×900 的柔光斑 .wall-light 表达"光在动、景没动"。
+ *    因此 C 节的断言整体反转：现在要证明的是「鼠标怎么动，壁纸层的位移都恒为 0」，
+ *    以及「光斑只走 transform、尺寸受控、收敛即停 rAF、触屏不启用」。
  */
 const fs = require('fs');
 const os = require('os');
@@ -253,9 +258,11 @@ const ok = (cond, label, extra) => {
   console.log('\n=== C. 运行流畅度 ===');
   // ==================================================================
   {
-    // ---- 静态不变式：视差不许走 CSS 变量 ----
+    // ---- 静态不变式：位置不通过 CSS 变量下发 ----
     // 自定义属性会被后代继承，赋值要沿继承链传播失效；transform 是普通属性，
-    // 失效范围只有元素自己。而且直接写 transform 每帧只花一次属性写。
+    // 失效范围只有元素自己。
+    // 2026-10-23：背景改为完全静止后这条依然成立 —— 现在连每帧写 transform
+    // 都不需要了，只有光斑那一层在指针移动时写。
     const where = await evalJs(`(() => {
       const rs = document.documentElement.style;
       return {
@@ -265,26 +272,46 @@ const ok = (cond, label, extra) => {
       };
     })()`);
     ok(where.px === '' && where.py === '' && where.scale === '',
-      '视差没有走 CSS 变量（不会沿继承链让后代元素失效）', where);
+      '位置没有走 CSS 变量（不会沿继承链让后代元素失效）', where);
 
-    // 先把鼠标放进页面，触发视差
+    // 把鼠标放进页面：★ 背景必须不动，动的是光斑
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 720, y: 450, button: 'none' }, sid);
     await sleep(600);
 
-    const tfAfter = await evalJs(`(() => {
+    const bgTf = await evalJs(`(() => {
       const l = document.querySelector('.wall-layer.is-on') || document.querySelector('.wall-layer');
-      return l ? l.style.transform : '(无层)';
+      return l ? (l.style.transform || '(空)') : '(无层)';
     })()`);
-    ok(/translate3d/.test(tfAfter), '可见层写上了 inline transform（视差生效）', tfAfter);
+    ok(bgTf === '(空)', '★ 移动鼠标后壁纸层仍静止（背景固定，无 inline transform）', bgTf);
+
+    const light = await evalJs(`(() => {
+      const l = document.querySelector('.wall-light');
+      if (!l) return null;
+      const cs = getComputedStyle(l);
+      const r = l.getBoundingClientRect();
+      return {
+        live: l.classList.contains('is-live'),
+        opacity: cs.opacity,
+        transform: cs.transform,
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+      };
+    })()`);
+    ok(!!light, '光斑层 .wall-light 已挂载');
+    ok(!!light && light.live && light.opacity === '1', '指针移动后光斑亮起', light && light.opacity);
+    ok(!!light && /matrix/.test(light.transform),
+      '光斑通过 transform 位移（合成器路径，不触发重绘）', light && light.transform.slice(0, 34));
+    ok(!!light && light.w <= 1000 && light.h <= 1000,
+      '光斑尺寸受控（≤1000px，不做整屏合成）', light ? light.w + '×' + light.h : '');
 
     const hiddenTf = await evalJs(`(() => {
       const ls = Array.from(document.querySelectorAll('.wall-layer'));
       const off = ls.filter(l => !l.classList.contains('is-on'));
       return off.map(l => l.style.transform || '(空)');
     })()`);
-    // 不可见层不该被反复写 —— 它照样参与样式重算与图层合成，写它就是白烧预算
+    // 不可见层不该被写 —— 它照样参与样式重算与图层合成，写它就是白烧预算
     ok(hiddenTf.every((t) => t === '(空)' || !/translate3d/.test(t)),
-      '不可见的那一层没有被反复写 transform（静止态只喂可见层）', hiddenTf);
+      '不可见的那一层没有被写 transform（静止态零写入）', hiddenTf);
 
     // ---- 滤镜不变式 ----
     const flt = await evalJs(`(() => {
@@ -352,40 +379,53 @@ const ok = (cond, label, extra) => {
 
     await evalJs(`document.activeElement && document.activeElement.blur()`);
     await sleep(800);
-    const onBlur = await sweep('视差开 · 失焦 60 次移动');
+    const onBlur = await sweep('光斑跟随 · 失焦 60 次移动');
 
     await evalJs(`document.querySelector('#searchInput').focus()`);
     await sleep(800);
-    const onFocus = await sweep('视差开 · 聚焦 60 次移动');
+    const onFocus = await sweep('光斑跟随 · 聚焦 60 次移动');
 
     // 布局指标同样不稳定（同一份代码，不同轮次在 0~283 之间乱跳），
-    // 所以换成**静态源码约束**：直接检查视差的写入路径只碰 transform，
-    // 绝不碰任何会触发布局的属性。这条是确定的，改坏了必然红。
+    // 所以换成**静态源码约束**：直接检查光斑的写入路径只碰 transform，
+    // 绝不碰任何会触发布局的属性；同时确认旧的整图位移已经彻底不在了。
+    // 这两条是确定的，改坏了必然红。
     {
       const src = fs.readFileSync('public/static/js/wallpaper.js', 'utf8');
-      const fnStart = src.indexOf('function write(vx, vy)');
-      const fnEnd = src.indexOf('function tick()', fnStart);
-      const body = src.slice(fnStart, fnEnd);
-      ok(fnStart > 0 && fnEnd > fnStart, '能定位到视差的 write() 函数体', { fnStart, fnEnd });
+      ok(!/function\s+initParallax/.test(src) && !/var\s+parallaxSync/.test(src),
+        '旧的整图位移（initParallax / parallaxSync）已彻底移除', /initParallax/.test(src));
+
+      const fnStart = src.indexOf('function initPointerLight');
+      ok(fnStart > 0, '能定位到光斑的 initPointerLight()', fnStart);
+
+      const wStart = src.indexOf('function write()', fnStart);
+      const wEnd = src.indexOf('function tick()', wStart);
+      const body = src.slice(wStart, wEnd);
+      ok(wStart > fnStart && wEnd > wStart, '能定位到光斑的 write() 函数体', { wStart, wEnd });
       ok(!/\.style\.(width|height|top|left|right|bottom|margin|padding)\s*=/.test(body),
-        'write() 不写任何布局属性（只允许 transform / will-change）', body.match(/\.style\.\w+/g));
+        'write() 不写任何布局属性（只允许 transform）', body.match(/\.style\.\w+/g));
       ok(/style\.transform\s*=/.test(body), 'write() 确实通过 transform 位移', true);
       // passive 监听：pointermove 是高频路径，被动监听才不会拖住滚动
-      ok(/addEventListener\(\s*'pointermove'[\s\S]{0,400}?passive:\s*true/.test(src),
+      ok(/addEventListener\(\s*'pointermove'[\s\S]{0,1600}?passive:\s*true/.test(src),
         'pointermove 使用 passive 监听', true);
-      // 触屏不该走视差（没有悬停概念，跟着手指晃只会晕）
+      // 触屏不该走光斑（没有悬停概念，光会停在最后点到的位置）
       ok(/pointerType\s*===\s*'touch'[\s\S]{0,80}return/.test(src),
-        '触屏直接跳过视差', true);
+        '触屏直接跳过光斑', true);
+      ok(/matchMedia\('\(pointer: coarse\)'\)/.test(src),
+        '粗指针（触屏）在初始化阶段就退出，不留监听器', true);
+      // 收敛即停：只追不上的时候才继续要下一帧
+      ok(/Math\.abs\(tx - cx\) > 0\.5[\s\S]{0,80}requestAnimationFrame/.test(src),
+        '光斑收敛后停止 rAF（鼠标停下 = 零开销）', true);
     }
 
-    // 缩放/位移不得超出保险范围，否则会露出壁纸边缘
+    // 背景静止 → 没有放大，也就没有露边与重采样
     const geom = await evalJs(`(() => {
       const l = document.querySelector('.wall-layer.is-on') || document.querySelector('.wall-layer');
       const cs = getComputedStyle(l);
       return { transform: cs.transform, bgSize: cs.backgroundSize };
     })()`);
-    ok(/matrix/.test(geom.transform), '壁纸层 transform 处于生效状态', geom.transform.slice(0, 40));
-    ok(/cover|%|px/.test(geom.bgSize), '壁纸用 cover 铺满（配合 1.012 保险放大不会露边）', geom.bgSize);
+    ok(geom.transform === 'none',
+      '★ 壁纸层计算值就是 none（不放大 = 不多一遍重采样，也不会露边）', geom.transform);
+    ok(/cover/.test(geom.bgSize), '壁纸用 cover 铺满', geom.bgSize);
   }
 
   // ==================================================================
