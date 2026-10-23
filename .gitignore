@@ -17,6 +17,8 @@ _perf_grain.json
 _editor_*.png
 preview-fade-*.png
 _shot_*.png
+# Edge 无头模式用的浏览器 profile（_qa_ui.js / 截图脚本的 --user-data-dir），几十 MB
+_ui_profile/
 # _shot_ab.js 出的 A/B 对比图（整页 + 2 倍放大，三个视觉场景）
 _ab_*.png
 # 各脚本重定向出来的运行日志
@@ -37,3 +39,7 @@ _diag/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ---------- Python 缓存 ----------
+__pycache__/
+*.pyc
