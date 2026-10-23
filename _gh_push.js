@@ -106,7 +106,12 @@ function metaOf(sha) {
 async function entriesFor(sha) {
   // 用 ~1 而不是 ^1：execSync 在 Windows 上经 cmd，^ 会被当转义符吞掉。
   const parent = sh(`git rev-parse ${sha}~1`).trim();
-  const raw = sh(`git diff --name-status ${parent} ${sha}`).trim();
+  // ⚠️ `-c core.quotepath=false` 不能少。
+  // 默认 core.quotepath=true 时，非 ASCII 路径会输出成 `"docs/\344\272\244..."` ——
+  // 带引号、非 ASCII 字节被转成八进制转义。那样拿到的字符串不是真实路径，
+  // 后面 `git show <sha>:<那个字符串>` 必然报 "path does not exist"。
+  // 关掉之后输出的是原始 UTF-8 路径，可以原样传给 git 与 GitHub API。
+  const raw = sh(`git -c core.quotepath=false diff --name-status ${parent} ${sha}`).trim();
   const lines = raw ? raw.split('\n').filter(Boolean) : [];
   const entries = [];
   let added = 0, modified = 0, deleted = 0;
