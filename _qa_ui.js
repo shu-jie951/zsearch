@@ -393,6 +393,22 @@ function waitForDevtools(port, ms = 15000) {
 
     // ================================================ 7 主题切换
     console.log('\n=== 7. 亮色主题渲染 ===');
+    // ⚠️ 先关掉壁纸再测系统主题。
+    // 壁纸的 tone 会强制覆写 --bg / --text 等变量（html[data-wall-tone="dark"]
+    // 优先级高于 :root 里的 @media (prefers-color-scheme)）—— 这是设计行为：
+    // 壁纸是暗的就必须配浅色文字，不能让系统偏好把对比度毁掉。
+    // 所以"跟随系统深浅色"这个能力只在**无壁纸**状态下成立，测试也必须在这个前提下测。
+    await evaluate(
+      cdp,
+      `(function(){ if (window.ZSearchWall && window.ZSearchWall.set) { window.ZSearchWall.set(null); } return 1; })()`
+    );
+    await sleep(700);
+    const noWall = await evaluate(
+      cdp,
+      `(function(){ return { wall: document.documentElement.dataset.wall || '', tone: document.documentElement.dataset.wallTone || '' }; })()`
+    );
+    check('已切到无壁纸态（系统主题才会接管）', noWall.wall === 'off', `wall=${noWall.wall} tone=${noWall.tone}`);
+
     await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
     await sleep(600);
     const light = await evaluate(cdp, `
