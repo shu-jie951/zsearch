@@ -278,9 +278,16 @@ app.get('/api/search', async (req, res) => {
   try {
     // 6.5 秒是实测出来的分界：pansou 常见查询在 1~5 秒内回
     // （三体 0.95s / 甄嬛传 4.97s / 考研 12s），前两档能在第一阶段就显示。
-    const agg = fast
-      ? await aggregator.search(q, { sort, cloud, only: FAST_SOURCES, timeoutMs: 6500 })
-      : await aggregator.search(q, { sort, cloud });
+    //
+    // searchSmart 会先做查询清洗（「有没有庆余年的资源」→「庆余年」），
+    // 第一阶段不允许它再追变体 —— 首屏时间优先。
+    const agg = await aggregator.searchSmart(q, {
+      sort,
+      cloud,
+      ...(fast
+        ? { only: FAST_SOURCES, timeoutMs: 6500, noExpand: true }
+        : {}),
+    });
 
     let results = agg.items;
     let source = agg.source;
@@ -415,6 +422,8 @@ app.get('/api/search', async (req, res) => {
         deduped: agg.deduped || 0,
         // 无结果时的查询变体建议（去年份 / 缩短 / 取核心词）
         suggest: agg.suggest || [],
+        // 查询理解与自动扩展的如实交代：清洗成了什么词、补查了哪些变体
+        expanded: agg.expanded || null,
       },
     });
   } catch (err) {

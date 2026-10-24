@@ -297,6 +297,25 @@
       statsContainer.appendChild(warn);
     }
 
+    // 查询理解的结果要如实交代，不能悄悄改掉用户的词。
+    // 两种情况值得说：① 口语被清洗成了核心词；② 结果太少时自动补查了变体。
+    if (data && data.expanded && count > 0) {
+      const ex = data.expanded;
+      const bits = [];
+      if (ex.rewritten && ex.to) bits.push('按「' + ex.to + '」检索');
+      const tried = (ex.variants || []).filter(function (v) { return v.count > 0; });
+      if (tried.length) bits.push('已放宽：' + tried.map(function (v) { return v.q; }).join('、'));
+      if (bits.length) {
+        const hint = document.createElement('span');
+        hint.className = 'src-tag hint';
+        hint.textContent = bits.join(' · ');
+        hint.title =
+          '你输入的词里有口语修饰（求 / 有没有 / 的资源 …），先清洗成核心词再检索；' +
+          '结果偏少时会自动用更宽松的变体补查，补到的条目排在后面。';
+        statsContainer.appendChild(hint);
+      }
+    }
+
     // 查询变体建议：真实源全空时，在统计行尾部挂「试试：」chips
     // —— 去年份 / 缩短查询往往立刻有结果。
     if (

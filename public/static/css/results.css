@@ -502,6 +502,15 @@ body.results-body {
   .results-stats .src-tag.pending::before { animation: none; opacity: 0.9; }
 }
 
+/* 查询理解提示：口语被清洗成了核心词 / 结果太少时自动放宽过。
+   用中性描边而不是强调色 —— 这是「解释」，不是「警告」。 */
+.results-stats .src-tag.hint {
+  border-style: dashed;
+  color: var(--text-muted);
+  border-color: var(--border-strong);
+  cursor: help;
+}
+
 /* 两阶段搜索的中间态：第一阶段没结果、第二阶段还在路上 */
 .searching-hint {
   display: flex;
