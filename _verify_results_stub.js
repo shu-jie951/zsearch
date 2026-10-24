@@ -74,6 +74,15 @@ function payload(q) {
         { id: 'pansou', count: 4, ms: 800, ok: true, error: null },
         { id: 'hunhepan', count: 2, ms: 1500, ok: true, error: null },
       ],
+      // 查询理解的交代（2026-10-24 新增）。桩里必须给这一块，
+      // 否则「统计行的改写提示」这条渲染路径永远测不到。
+      expanded: {
+        rewritten: true,
+        from: '有没有考研的资料',
+        to: '考研',
+        variants: [{ q: '考研', reason: '去口语修饰', count: 6 }],
+        added: 4,
+      },
     },
   };
 }
@@ -169,6 +178,7 @@ function payload(q) {
       hasProvider: !!(first && first.querySelector('.result-provider')),
       hasProgress: !!document.getElementById('scrollProgress'),
       hasComposer: !!document.getElementById('resultsComposer'),
+      hintText: (document.querySelector('.results-stats .src-tag.hint') || {}).textContent || '',
       emptyState: !!document.querySelector('.empty-state')
     };
   })()`);
@@ -178,6 +188,8 @@ function payload(q) {
   check('来源徽章存在', resPage.hasProvider);
   check('滚动进度条存在', resPage.hasProgress);
   check('结果页搜索框存在', resPage.hasComposer);
+  check('查询改写提示已渲染', /考研/.test(resPage.hintText || ''), resPage.hintText);
+  check('提示里写明「按清洗后的词检索」', /按「考研」检索/.test(resPage.hintText || ''), resPage.hintText);
   check('无空状态(有结果时)', !resPage.emptyState);
 
   console.log('\n=== 6. 结果页键盘导航 ===');
