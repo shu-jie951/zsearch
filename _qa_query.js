@@ -106,6 +106,41 @@ const aT = q.analyze('周杰伦 无损');
 const tRel = q.relevance({ title: '周杰伦全部专辑 FLAC 无损' }, aT);
 ok('多词全部命中得到高分（>=60）', tRel >= 60, 'tRel=' + tRel);
 
+console.log('\nF. 容错匹配（打错字 / 少打字 / 打拼音）');
+
+const aTypo = q.analyze('庆余午');
+const typoHit = q.relevance({ title: '庆余年 第二季 全集 4K 中字' }, aTypo);
+const typoMiss = q.relevance({ title: '热门影视合集大全 持续更新' }, aTypo);
+ok('打错一个字仍能命中（>0）', typoHit > 0, 'typoHit=' + typoHit);
+ok('打错字命中显著高于无关条目', typoHit - typoMiss >= 20, typoHit + ' vs ' + typoMiss);
+
+const aShort = q.analyze('庆年');
+const shortHit = q.relevance({ title: '庆余年 第二季 全集' }, aShort);
+ok('少打中间的字能命中（子序列）', shortHit > 0, 'shortHit=' + shortHit);
+
+const aPy = q.analyze('qyn');
+ok('拼音首字母 qyn 命中 庆余年', q.relevance({ title: '庆余年 第二季 全集' }, aPy) >= 30);
+
+const aFull = q.analyze('qingyunian');
+ok('全拼 qingyunian 命中 庆余年', q.relevance({ title: '庆余年 第二季 全集' }, aFull) >= 40);
+
+const typoVars = q.prepare('庆余午第二季').variants.map((v) => v.q);
+ok('长中文词生成「前缀截断」变体（绕过词尾的错字）', typoVars.includes('庆余'), typoVars.join(' / '));
+
+console.log('\nG. 相关词抽取');
+
+const related = require('./lib/related');
+const relItems = [
+  '庆余年 第二季 全集 4K 中字', '庆余年 第一季 全集 1080P', '庆余年 原著小说 epub',
+  '庆余年 第二季 更新至12集', '庆余年 特别篇 花絮', '庆余年 第二季 4K HDR 内封字幕',
+  '庆余年 有声小说 全本', '庆余年 漫画 全彩',
+].map((t) => ({ title: t }));
+const terms = related.extract(relItems, q.analyze('庆余年'));
+ok('相关词非空', terms.length > 0, terms.join('、'));
+ok('相关词不含查询词本身', !terms.some((t) => '庆余年'.includes(t) || t.includes('庆余年')), terms.join('、'));
+ok('相关词不含泛词（合集/全集/资源…）', !terms.some((t) => ['合集', '全集', '资源', '下载'].includes(t)), terms.join('、'));
+ok('相关词长度 2~4 字', terms.every((t) => t.length >= 2 && t.length <= 4), terms.join('、'));
+
 console.log('\n————————————————————————————');
 if (fails.length) {
   console.log('\x1b[31m失败 ' + fails.length + ' 项：\x1b[0m');

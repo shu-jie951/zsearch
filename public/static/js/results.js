@@ -316,6 +316,34 @@
       }
     }
 
+    // 相关词：从本批标题里统计出来的「下一步可以搜什么」。
+    // 借鉴那批影视/短剧站结果页底部的「相关搜索」—— 不是词库拼的，
+    // 是同一批资源反复出现的词（系列名/季数/演员/画质）。
+    if (data && Array.isArray(data.related) && data.related.length) {
+      const relWrap = document.createElement('span');
+      relWrap.className = 'related-terms';
+      const relLead = document.createElement('span');
+      relLead.className = 'related-terms-lead';
+      relLead.textContent = '相关：';
+      relWrap.appendChild(relLead);
+      data.related.forEach(function (w) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'sug-chip';
+        chip.textContent = w;
+        chip.title = '改搜「' + w + '」';
+        chip.addEventListener('click', function () {
+          input.value = w;
+          state.q = w;
+          syncSubmitState();
+          syncUrl();
+          load();
+        });
+        relWrap.appendChild(chip);
+      });
+      statsContainer.appendChild(relWrap);
+    }
+
     // 查询变体建议：真实源全空时，在统计行尾部挂「试试：」chips
     // —— 去年份 / 缩短查询往往立刻有结果。
     if (

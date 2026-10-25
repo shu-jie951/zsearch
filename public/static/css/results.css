@@ -558,20 +558,24 @@ body.results-body {
   }
 }
 
-/* 查询变体建议（演示数据场景下给出「试试：xxx」） */
-.suggest-variants {
+/* 查询变体建议（演示数据场景下给出「试试：xxx」）
+   相关词（.related-terms）与它共用同一套胶囊外观，只是文案不同 */
+.suggest-variants,
+.related-terms {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
 }
 
-.suggest-variants-lead {
+.suggest-variants-lead,
+.related-terms-lead {
   font-size: 12px;
   color: var(--text-faint);
 }
 
-.suggest-variants .sug-chip {
+.suggest-variants .sug-chip,
+.related-terms .sug-chip {
   display: inline-flex;
   align-items: center;
   height: 24px;
@@ -586,7 +590,8 @@ body.results-body {
   transition: all var(--dur-fast) ease;
 }
 
-.suggest-variants .sug-chip:hover {
+.suggest-variants .sug-chip:hover,
+.related-terms .sug-chip:hover {
   color: var(--text-strong);
   border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
   background: var(--surface-hover);

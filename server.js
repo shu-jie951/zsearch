@@ -424,6 +424,8 @@ app.get('/api/search', async (req, res) => {
         suggest: agg.suggest || [],
         // 查询理解与自动扩展的如实交代：清洗成了什么词、补查了哪些变体
         expanded: agg.expanded || null,
+        // 相关词：从本批标题统计出来的"下一步可以搜什么"
+        related: agg.related || [],
       },
     });
   } catch (err) {

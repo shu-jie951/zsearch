@@ -83,6 +83,8 @@ function payload(q) {
         variants: [{ q: '考研', reason: '去口语修饰', count: 6 }],
         added: 4,
       },
+      // 相关词（2026-10-25 新增）：从标题统计出来的"下一步可以搜什么"
+      related: ['数学一', '真题', '政治'],
     },
   };
 }
@@ -179,6 +181,7 @@ function payload(q) {
       hasProgress: !!document.getElementById('scrollProgress'),
       hasComposer: !!document.getElementById('resultsComposer'),
       hintText: (document.querySelector('.results-stats .src-tag.hint') || {}).textContent || '',
+      relatedChips: document.querySelectorAll('.related-terms .sug-chip').length,
       emptyState: !!document.querySelector('.empty-state')
     };
   })()`);
@@ -190,6 +193,7 @@ function payload(q) {
   check('结果页搜索框存在', resPage.hasComposer);
   check('查询改写提示已渲染', /考研/.test(resPage.hintText || ''), resPage.hintText);
   check('提示里写明「按清洗后的词检索」', /按「考研」检索/.test(resPage.hintText || ''), resPage.hintText);
+  check('相关词 chips 已渲染', resPage.relatedChips === 3, resPage.relatedChips + ' 个');
   check('无空状态(有结果时)', !resPage.emptyState);
 
   console.log('\n=== 6. 结果页键盘导航 ===');
