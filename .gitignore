@@ -5,7 +5,9 @@ yarn-error.log*
 
 # ---------- 运行时数据 ----------
 # 缓存、源健康度、熔断状态等，都是跑起来自己生成的
-data/
+# ⚠️ 必须写成 /data/（只锚定仓库根目录）。写成 data/ 会把 lib/data/ 一起吃掉 ——
+#    而 lib/data/pinyin.js 是运行时必需的拼音字表，被忽略后 clone 下来直接崩。
+/data/
 _server.log
 *.log
 
